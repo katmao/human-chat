@@ -26,6 +26,7 @@ import Bg from '../public/img/chat/bg-image.png';
 interface Message {
   role: 'user' | 'assistant';
   content: string;
+  isTyping?: boolean;
 }
 
 export default function Chat() {
@@ -92,7 +93,6 @@ export default function Chat() {
     // Add user message to history
     setMessages(prev => [...prev, { role: 'user', content: inputCode }]);
     
-    setOutputCode(' ');
     setLoading(true);
     const controller = new AbortController();
     const body: ChatBody = {
@@ -124,25 +124,53 @@ export default function Chat() {
       return;
     }
 
+    // Add assistant message placeholder without typing indicator
+    setMessages(prev => [...prev, { role: 'assistant', content: '', isTyping: true }]);
+
     const reader = data.getReader();
     const decoder = new TextDecoder();
-    let done = false;
     let accumulatedResponse = '';
 
-    while (!done) {
-      setLoading(true);
-      const { value, done: doneReading } = await reader.read();
-      done = doneReading;
-      const chunkValue = decoder.decode(value);
-      accumulatedResponse += chunkValue;
-      setOutputCode((prevCode) => prevCode + chunkValue);
-    }
+    const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-    // Add assistant message to history
-    setMessages(prev => [...prev, { role: 'assistant', content: accumulatedResponse }]);
-    setLoading(false);
-    // Clear input after sending
-    setInputCode('');
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        
+        const chunkValue = decoder.decode(value);
+        // Add a small delay between chunks to slow down the typing effect
+        await delay(50);
+        
+        accumulatedResponse += chunkValue;
+        
+        // Update the last message with the accumulated response
+        setMessages(prev => {
+          const newMessages = [...prev];
+          if (newMessages.length > 0) {
+            const lastMessage = newMessages[newMessages.length - 1];
+            if (lastMessage && lastMessage.role === 'assistant') {
+              lastMessage.content = accumulatedResponse;
+            }
+          }
+          return newMessages;
+        });
+      }
+    } finally {
+      // Ensure typing indicator is removed when done
+      setMessages(prev => {
+        const newMessages = [...prev];
+        if (newMessages.length > 0) {
+          const lastMessage = newMessages[newMessages.length - 1];
+          if (lastMessage && lastMessage.role === 'assistant') {
+            lastMessage.isTyping = false;
+          }
+        }
+        return newMessages;
+      });
+      setLoading(false);
+      setInputCode('');
+    }
   };
   // -------------- Copy Response --------------
   // const copyToClipboard = (text: string) => {
@@ -360,6 +388,9 @@ export default function Chat() {
                   lineHeight={{ base: '24px', md: '26px' }}
                 >
                   {message.content}
+                  {message.isTyping && message.content && (
+                    <span className="typing-indicator">▋</span>
+                  )}
                 </Text>
               </Flex>
             </Flex>
