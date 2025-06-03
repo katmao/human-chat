@@ -5,17 +5,14 @@ export const runtime = 'edge';
 
 export async function GET(req: Request): Promise<Response> {
   try {
-    const { inputCode, model, apiKey } = (await req.json()) as ChatBody;
+    const { inputCode, model } = (await req.json()) as ChatBody;
 
-    let apiKeyFinal;
-    if (apiKey) {
-      apiKeyFinal = apiKey;
-    } else {
-      apiKeyFinal = process.env.NEXT_PUBLIC_OPENAI_API_KEY;
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey?.includes('sk-')) {
+      return new Response('OpenAI API key not configured', { status: 500 });
     }
 
-    const stream = await OpenAIStream(inputCode, model, apiKeyFinal);
-
+    const stream = await OpenAIStream(inputCode, model, apiKey);
     return new Response(stream);
   } catch (error) {
     console.error(error);
@@ -25,17 +22,14 @@ export async function GET(req: Request): Promise<Response> {
 
 export async function POST(req: Request): Promise<Response> {
   try {
-    const { inputCode, model, apiKey } = (await req.json()) as ChatBody;
+    const { inputCode, model } = (await req.json()) as ChatBody;
 
-    let apiKeyFinal;
-    if (apiKey) {
-      apiKeyFinal = apiKey;
-    } else {
-      apiKeyFinal = process.env.NEXT_PUBLIC_OPENAI_API_KEY;
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey?.includes('sk-')) {
+      return new Response('OpenAI API key not configured', { status: 500 });
     }
 
-    const stream = await OpenAIStream(inputCode, model, apiKeyFinal);
-
+    const stream = await OpenAIStream(inputCode, model, apiKey);
     return new Response(stream);
   } catch (error) {
     console.error(error);

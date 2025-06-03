@@ -63,16 +63,8 @@ export default function Chat() {
     { color: 'whiteAlpha.600' },
   );
   const handleTranslate = async () => {
-    let apiKey = localStorage.getItem('apiKey');
-    setInputOnSubmit(inputCode);
-
     // Chat post conditions(maximum number of characters, valid message etc.)
     const maxCodeLength = model === 'gpt-4o' ? 700 : 700;
-
-    if (!apiKey?.includes('sk-')) {
-      alert('Please enter an API key.');
-      return;
-    }
 
     if (!inputCode) {
       alert('Please enter your message.');
@@ -94,8 +86,7 @@ export default function Chat() {
     const controller = new AbortController();
     const body: ChatBody = {
       inputCode,
-      model,
-      apiKey,
+      model
     };
 
     // -------------- Fetch --------------
@@ -110,11 +101,7 @@ export default function Chat() {
 
     if (!response.ok) {
       setLoading(false);
-      if (response) {
-        alert(
-          'Something went wrong went fetching from the API. Make sure to use a valid API key.',
-        );
-      }
+      alert('Something went wrong with the API request. Please check the server configuration.');
       return;
     }
 
