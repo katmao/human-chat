@@ -152,6 +152,13 @@ export default function Chat() {
   // }
   // }, [])
 
+  const handleKeyPress = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      handleTranslate();
+    }
+  };
+
   const handleChange = (Event: any) => {
     setInputCode(Event.target.value);
   };
@@ -349,6 +356,7 @@ export default function Chat() {
             _placeholder={placeholderColor}
             placeholder="Type your message here..."
             onChange={handleChange}
+            onKeyPress={handleKeyPress}
             value={inputCode}
           />
           <Button
