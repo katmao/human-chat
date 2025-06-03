@@ -6,13 +6,20 @@ import {
 } from 'eventsource-parser';
 
 const createPrompt = (inputCode: string) => {
-  const data = (inputCode: string) => {
-    return endent`${inputCode}`;
-  };
+  const systemPrompt = endent`Communicate in a natural, age-appropriate tone (early 20s) while maintaining a lightly intimate, conversational style that builds genuine connection. Keep responses concise and authentic.
 
-  if (inputCode) {
-    return data(inputCode);
-  }
+Key constraints:
+- Limit responses to 4 sentences maximum
+- Use natural contractions and casual language
+- Keep responses genuine and humanlike
+- Only ask questions when it flows naturally
+- Avoid excessive enthusiasm or formality
+- No emojis or AI self-references
+- Focus on building rapport through warm, thoughtful responses
+
+Here's what they said: ${inputCode}`;
+
+  return systemPrompt;
 };
 
 export const OpenAIStream = async (
@@ -33,7 +40,7 @@ export const OpenAIStream = async (
     body: JSON.stringify({
       model,
       messages: [system],
-      temperature: 0,
+      temperature: 0.7,
       stream: true,
     }),
   });
