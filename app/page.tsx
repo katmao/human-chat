@@ -19,7 +19,7 @@ import {
   Text,
   useColorModeValue,
 } from '@chakra-ui/react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { MdAutoAwesome, MdBolt, MdEdit, MdPerson } from 'react-icons/md';
 import Bg from '../public/img/chat/bg-image.png';
 
@@ -40,6 +40,17 @@ export default function Chat() {
   const [model, setModel] = useState<OpenAIModel>('gpt-4o');
   // Loading state
   const [loading, setLoading] = useState<boolean>(false);
+  // Reference to the messages container
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Scroll to bottom whenever messages change
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, outputCode]);
 
   // API Key
   // const [apiKey, setApiKey] = useState<string>(apiKeyApp);
@@ -292,7 +303,26 @@ export default function Chat() {
           </Accordion>
         </Flex>
         {/* Message History */}
-        <Flex direction="column" w="100%" mx="auto" mb={'auto'} overflowY="auto" maxH="60vh">
+        <Flex 
+          direction="column" 
+          w="100%" 
+          mx="auto" 
+          mb={'auto'} 
+          overflowY="auto" 
+          maxH="60vh"
+          css={{
+            '&::-webkit-scrollbar': {
+              width: '4px',
+            },
+            '&::-webkit-scrollbar-track': {
+              width: '6px',
+            },
+            '&::-webkit-scrollbar-thumb': {
+              background: 'gray.500',
+              borderRadius: '24px',
+            },
+          }}
+        >
           {messages.map((message, index) => (
             <Flex w="100%" key={index} align={'center'} mb="10px">
               <Flex
@@ -334,6 +364,8 @@ export default function Chat() {
               </Flex>
             </Flex>
           ))}
+          {/* Invisible element to scroll to */}
+          <div ref={messagesEndRef} />
         </Flex>
         {/* Chat Input */}
         <Flex
