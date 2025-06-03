@@ -23,10 +23,17 @@ import { useEffect, useState } from 'react';
 import { MdAutoAwesome, MdBolt, MdEdit, MdPerson } from 'react-icons/md';
 import Bg from '../public/img/chat/bg-image.png';
 
-export default function Chat(props: { apiKeyApp: string }) {
+interface Message {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export default function Chat() {
   // Input States
   const [inputOnSubmit, setInputOnSubmit] = useState<string>('');
   const [inputCode, setInputCode] = useState<string>('');
+  // Message history
+  const [messages, setMessages] = useState<Message[]>([]);
   // Response message
   const [outputCode, setOutputCode] = useState<string>('');
   // ChatGPT model
@@ -78,6 +85,10 @@ export default function Chat(props: { apiKeyApp: string }) {
       );
       return;
     }
+
+    // Add user message to history
+    setMessages(prev => [...prev, { role: 'user', content: inputCode }]);
+    
     setOutputCode(' ');
     setLoading(true);
     const controller = new AbortController();
@@ -118,16 +129,22 @@ export default function Chat(props: { apiKeyApp: string }) {
     const reader = data.getReader();
     const decoder = new TextDecoder();
     let done = false;
+    let accumulatedResponse = '';
 
     while (!done) {
       setLoading(true);
       const { value, done: doneReading } = await reader.read();
       done = doneReading;
       const chunkValue = decoder.decode(value);
+      accumulatedResponse += chunkValue;
       setOutputCode((prevCode) => prevCode + chunkValue);
     }
 
+    // Add assistant message to history
+    setMessages(prev => [...prev, { role: 'assistant', content: accumulatedResponse }]);
     setLoading(false);
+    // Clear input after sending
+    setInputCode('');
   };
   // -------------- Copy Response --------------
   // const copyToClipboard = (text: string) => {
@@ -280,80 +297,49 @@ export default function Chat(props: { apiKeyApp: string }) {
             </AccordionItem>
           </Accordion>
         </Flex>
-        {/* Main Box */}
-        <Flex
-          direction="column"
-          w="100%"
-          mx="auto"
-          display={outputCode ? 'flex' : 'none'}
-          mb={'auto'}
-        >
-          <Flex w="100%" align={'center'} mb="10px">
-            <Flex
-              borderRadius="full"
-              justify="center"
-              align="center"
-              bg={'transparent'}
-              border="1px solid"
-              borderColor={borderColor}
-              me="20px"
-              h="40px"
-              minH="40px"
-              minW="40px"
-            >
-              <Icon
-                as={MdPerson}
-                width="20px"
-                height="20px"
-                color={brandColor}
-              />
-            </Flex>
-            <Flex
-              p="22px"
-              border="1px solid"
-              borderColor={borderColor}
-              borderRadius="14px"
-              w="100%"
-              zIndex={'2'}
-            >
-              <Text
-                color={textColor}
-                fontWeight="600"
-                fontSize={{ base: 'sm', md: 'md' }}
-                lineHeight={{ base: '24px', md: '26px' }}
+        {/* Message History */}
+        <Flex direction="column" w="100%" mx="auto" mb={'auto'} overflowY="auto" maxH="60vh">
+          {messages.map((message, index) => (
+            <Flex w="100%" key={index} align={'center'} mb="10px">
+              <Flex
+                borderRadius="full"
+                justify="center"
+                align="center"
+                bg={'transparent'}
+                border="1px solid"
+                borderColor={borderColor}
+                me="20px"
+                h="40px"
+                minH="40px"
+                minW="40px"
               >
-                {inputOnSubmit}
-              </Text>
-              <Icon
-                cursor="pointer"
-                as={MdEdit}
-                ms="auto"
-                width="20px"
-                height="20px"
-                color={gray}
-              />
+                <Icon
+                  as={message.role === 'user' ? MdPerson : MdAutoAwesome}
+                  width="20px"
+                  height="20px"
+                  color={message.role === 'user' ? brandColor : 'white'}
+                />
+              </Flex>
+              <Flex
+                p="22px"
+                border="1px solid"
+                borderColor={borderColor}
+                borderRadius="14px"
+                w="100%"
+                zIndex={'2'}
+                bg={message.role === 'assistant' ? 'linear-gradient(15.46deg, #4A25E1 26.3%, #7B5AFF 86.4%)' : 'transparent'}
+              >
+                <Text
+                  color={message.role === 'assistant' ? 'white' : textColor}
+                  fontWeight="600"
+                  fontSize={{ base: 'sm', md: 'md' }}
+                  lineHeight={{ base: '24px', md: '26px' }}
+                >
+                  {message.content}
+                </Text>
+              </Flex>
             </Flex>
-          </Flex>
-          <Flex w="100%">
-            <Flex
-              borderRadius="full"
-              justify="center"
-              align="center"
-              bg={'linear-gradient(15.46deg, #4A25E1 26.3%, #7B5AFF 86.4%)'}
-              me="20px"
-              h="40px"
-              minH="40px"
-              minW="40px"
-            >
-              <Icon
-                as={MdAutoAwesome}
-                width="20px"
-                height="20px"
-                color="white"
-              />
-            </Flex>
-            <MessageBoxChat output={outputCode} />
-          </Flex>
+          ))}
         </Flex>
         {/* Chat Input */}
         <Flex
@@ -376,6 +362,7 @@ export default function Chat(props: { apiKeyApp: string }) {
             _placeholder={placeholderColor}
             placeholder="Type your message here..."
             onChange={handleChange}
+            value={inputCode}
           />
           <Button
             variant="primary"
