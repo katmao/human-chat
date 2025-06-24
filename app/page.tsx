@@ -203,271 +203,87 @@ export default function Chat() {
   };
 
   return (
-    <Flex
-      w="100%"
-      pt={{ base: '70px', md: '0px' }}
-      direction="column"
-      position="relative"
-    >
-      <Img
-        src={Bg.src}
-        position={'absolute'}
-        w="350px"
-        left="50%"
-        top="50%"
-        transform={'translate(-50%, -50%)'}
-      />
-      <Flex
-        direction="column"
-        mx="auto"
-        w={{ base: '100%', md: '100%', xl: '100%' }}
-        minH={{ base: '75vh', '2xl': '85vh' }}
-        maxW="1000px"
+    <Box minH="100vh" bg="#FCFDFD" display="flex" flexDirection="column" justifyContent="flex-start" alignItems="center">
+      <Box
+        w={{ base: '100%', sm: '90%', md: '600px' }}
+        maxW="100%"
+        flex="1"
+        display="flex"
+        flexDirection="column"
+        pt={12}
+        pb={24}
       >
-        {/* Model Change */}
-        <Flex direction={'column'} w="100%" mb={outputCode ? '20px' : 'auto'}>
-          <Flex
-            mx="auto"
-            zIndex="2"
-            w="max-content"
-            mb="20px"
-            borderRadius="60px"
+        {messages.map((msg, idx) => (
+          <Box
+            key={idx}
+            display="flex"
+            justifyContent="flex-start"
+            mb={2}
           >
-            <Flex
-              cursor={'pointer'}
-              transition="0.3s"
-              justify={'center'}
-              align="center"
-              bg={model === 'gpt-4o' ? buttonBg : 'transparent'}
-              w="174px"
-              h="70px"
-              boxShadow={model === 'gpt-4o' ? buttonShadow : 'none'}
-              borderRadius="14px"
-              color={textColor}
-              fontSize="18px"
-              fontWeight={'700'}
-              onClick={() => setModel('gpt-4o')}
+            <Box
+              bg={msg.role === 'assistant' ? '#9CA3AF' : '#E5E7EB'}
+              color="#222"
+              px={4}
+              py={3}
+              borderRadius="8px"
+              maxW="80%"
+              fontSize="md"
+              style={{ boxShadow: 'none' }}
             >
-              <Flex
-                borderRadius="full"
-                justify="center"
-                align="center"
-                bg={bgIcon}
-                me="10px"
-                h="39px"
-                w="39px"
-              >
-                <Icon
-                  as={MdAutoAwesome}
-                  width="20px"
-                  height="20px"
-                  color={iconColor}
-                />
-              </Flex>
-              GPT-4o
-            </Flex>
-            <Flex
-              cursor={'pointer'}
-              transition="0.3s"
-              justify={'center'}
-              align="center"
-              bg={model === 'gpt-3.5-turbo' ? buttonBg : 'transparent'}
-              w="164px"
-              h="70px"
-              boxShadow={model === 'gpt-3.5-turbo' ? buttonShadow : 'none'}
-              borderRadius="14px"
-              color={textColor}
-              fontSize="18px"
-              fontWeight={'700'}
-              onClick={() => setModel('gpt-3.5-turbo')}
+              {msg.content}
+              {msg.isTyping && <span className="typing-indicator">|</span>}
+            </Box>
+          </Box>
+        ))}
+        <div ref={messagesEndRef} />
+      </Box>
+      <Box
+        position="fixed"
+        bottom={0}
+        left={0}
+        w="100%"
+        bg="#FCFDFD"
+        borderTop="1px solid #E5E7EB"
+        py={3}
+        px={{ base: 2, sm: 0 }}
+        display="flex"
+        justifyContent="center"
+        zIndex={10}
+      >
+        <Box w={{ base: '100%', sm: '90%', md: '600px' }}>
+          <Flex as="form" onSubmit={e => { e.preventDefault(); handleTranslate(); }}>
+            <Input
+              value={inputCode}
+              onChange={e => setInputCode(e.target.value)}
+              onKeyDown={handleKeyPress}
+              placeholder="Type your message..."
+              bg="#F3F4F6"
+              borderRadius="8px"
+              border="1px solid #E5E7EB"
+              fontSize="md"
+              color="#222"
+              _placeholder={{ color: '#A0AEC0' }}
+              mr={2}
+              autoFocus
+              _focus={{ boxShadow: 'none', borderColor: '#E5E7EB' }}
+            />
+            <Button
+              type="submit"
+              colorScheme="gray"
+              borderRadius="8px"
+              px={6}
+              isLoading={loading}
+              disabled={loading}
+              bg="#E5E7EB"
+              color="#222"
+              _hover={{ bg: '#D1D5DB' }}
+              boxShadow="none"
             >
-              <Flex
-                borderRadius="full"
-                justify="center"
-                align="center"
-                bg={bgIcon}
-                me="10px"
-                h="39px"
-                w="39px"
-              >
-                <Icon
-                  as={MdBolt}
-                  width="20px"
-                  height="20px"
-                  color={iconColor}
-                />
-              </Flex>
-              GPT-3.5
-            </Flex>
+              Send
+            </Button>
           </Flex>
-
-          <Accordion color={gray} allowToggle w="100%" my="0px" mx="auto">
-            <AccordionItem border="none">
-              <AccordionButton
-                borderBottom="0px solid"
-                maxW="max-content"
-                mx="auto"
-                _hover={{ border: '0px solid', bg: 'none' }}
-                _focus={{ border: '0px solid', bg: 'none' }}
-              >
-                <Box flex="1" textAlign="left">
-                  <Text color={gray} fontWeight="500" fontSize="sm">
-                    No plugins added
-                  </Text>
-                </Box>
-                <AccordionIcon color={gray} />
-              </AccordionButton>
-              <AccordionPanel mx="auto" w="max-content" p="0px 0px 10px 0px">
-                <Text
-                  color={gray}
-                  fontWeight="500"
-                  fontSize="sm"
-                  textAlign={'center'}
-                >
-                  This is a cool text example.
-                </Text>
-              </AccordionPanel>
-            </AccordionItem>
-          </Accordion>
-        </Flex>
-        {/* Message History */}
-        <Flex 
-          direction="column" 
-          w="100%" 
-          mx="auto" 
-          mb={'auto'} 
-          overflowY="auto" 
-          maxH="60vh"
-          css={{
-            '&::-webkit-scrollbar': {
-              width: '4px',
-            },
-            '&::-webkit-scrollbar-track': {
-              width: '6px',
-            },
-            '&::-webkit-scrollbar-thumb': {
-              background: 'gray.500',
-              borderRadius: '24px',
-            },
-          }}
-        >
-          {messages.map((message, index) => (
-            <Flex w="100%" key={index} align={'center'} mb="10px">
-              <Flex
-                borderRadius="full"
-                justify="center"
-                align="center"
-                bg={'transparent'}
-                border="1px solid"
-                borderColor={borderColor}
-                me="20px"
-                h="40px"
-                minH="40px"
-                minW="40px"
-              >
-                <Icon
-                  as={message.role === 'user' ? MdPerson : MdAutoAwesome}
-                  width="20px"
-                  height="20px"
-                  color={message.role === 'user' ? brandColor : 'white'}
-                />
-              </Flex>
-              <Flex
-                p="22px"
-                border="1px solid"
-                borderColor={borderColor}
-                borderRadius="14px"
-                w="100%"
-                zIndex={'2'}
-                bg={message.role === 'assistant' ? 'linear-gradient(15.46deg, #4A25E1 26.3%, #7B5AFF 86.4%)' : 'transparent'}
-              >
-                <Text
-                  color={message.role === 'assistant' ? 'white' : textColor}
-                  fontWeight="600"
-                  fontSize={{ base: 'sm', md: 'md' }}
-                  lineHeight={{ base: '24px', md: '26px' }}
-                >
-                  {message.content}
-                  {message.isTyping && message.content && (
-                    <span className="typing-indicator">▋</span>
-                  )}
-                </Text>
-              </Flex>
-            </Flex>
-          ))}
-          {/* Invisible element to scroll to */}
-          <div ref={messagesEndRef} />
-        </Flex>
-        {/* Chat Input */}
-        <Flex
-          ms={{ base: '0px', xl: '60px' }}
-          mt="20px"
-          justifySelf={'flex-end'}
-        >
-          <Input
-            minH="54px"
-            h="100%"
-            border="1px solid"
-            borderColor={borderColor}
-            borderRadius="45px"
-            p="15px 20px"
-            me="10px"
-            fontSize="sm"
-            fontWeight="500"
-            _focus={{ borderColor: 'none' }}
-            color={inputColor}
-            _placeholder={placeholderColor}
-            placeholder="Type your message here..."
-            onChange={handleChange}
-            onKeyPress={handleKeyPress}
-            value={inputCode}
-          />
-          <Button
-            variant="primary"
-            py="20px"
-            px="16px"
-            fontSize="sm"
-            borderRadius="45px"
-            ms="auto"
-            w={{ base: '160px', md: '210px' }}
-            h="54px"
-            _hover={{
-              boxShadow:
-                '0px 21px 27px -10px rgba(96, 60, 255, 0.48) !important',
-              bg: 'linear-gradient(15.46deg, #4A25E1 26.3%, #7B5AFF 86.4%) !important',
-              _disabled: {
-                bg: 'linear-gradient(15.46deg, #4A25E1 26.3%, #7B5AFF 86.4%)',
-              },
-            }}
-            onClick={handleTranslate}
-            isLoading={loading ? true : false}
-          >
-            Submit
-          </Button>
-        </Flex>
-
-        <Flex
-          justify="center"
-          mt="20px"
-          direction={{ base: 'column', md: 'row' }}
-          alignItems="center"
-        >
-          <Text fontSize="xs" textAlign="center" color={gray}>
-            Free Research Preview. ChatGPT may produce inaccurate information
-            about people, places, or facts.
-          </Text>
-          <Link href="https://help.openai.com/en/articles/6825453-chatgpt-release-notes">
-            <Text
-              fontSize="xs"
-              color={textColor}
-              fontWeight="500"
-              textDecoration="underline"
-            >
-              ChatGPT May 12 Version
-            </Text>
-          </Link>
-        </Flex>
-      </Flex>
-    </Flex>
+        </Box>
+      </Box>
+    </Box>
   );
 }
