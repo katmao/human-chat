@@ -1,75 +1,36 @@
-'use client';
-/*eslint-disable*/
-
-import Link from '@/components/link/Link';
-import MessageBoxChat from '@/components/MessageBox';
-import { ChatBody, OpenAIModel } from '@/types/types';
-import {
-  Accordion,
-  AccordionButton,
-  AccordionIcon,
-  AccordionItem,
-  AccordionPanel,
-  Box,
-  Button,
-  Flex,
-  Icon,
-  Img,
-  Input,
-  Text,
-  useColorModeValue,
-  useDisclosure,
-  Modal,
-  ModalOverlay,
-  ModalContent,
-  ModalHeader,
-  ModalBody,
-  ModalFooter,
-} from '@chakra-ui/react';
-import { useEffect, useState, useRef } from 'react';
-import { MdAutoAwesome, MdBolt, MdEdit, MdPerson } from 'react-icons/md';
-import Bg from '../public/img/chat/bg-image.png';
-import { db } from '../src/firebase';
-import { collection, addDoc, query, orderBy, onSnapshot, doc, setDoc, updateDoc } from 'firebase/firestore';
-import { v4 as uuidv4 } from 'uuid';
+"use client";
+import { useEffect, useRef, useState, Suspense } from "react";
+import { Box, Button, Flex, Input, useDisclosure, Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalFooter } from "@chakra-ui/react";
+import { db } from "../../src/firebase";
+import { collection, addDoc, query, orderBy, onSnapshot, doc, setDoc } from "firebase/firestore";
+import { useSearchParams } from 'next/navigation';
 
 interface Message {
-  sender: 'User 1' | 'User 2';
+  sender: "User 1" | "User 2";
   content: string;
 }
 
-export default function Chat() {
-  // Input States
-  const [inputOnSubmit, setInputOnSubmit] = useState<string>('');
-  const [inputCode, setInputCode] = useState<string>('');
-  // Message history
+function ConfederateChatContent() {
+  const searchParams = useSearchParams();
+  const [sessionId, setSessionId] = useState<string>("");
+  const [inputSessionId, setInputSessionId] = useState<string>("");
   const [messages, setMessages] = useState<Message[]>([]);
-  // Current user
-  const [currentUser, setCurrentUser] = useState<'User 1' | 'User 2' | null>(null);
-  // Reference to the messages container
+  const [inputCode, setInputCode] = useState<string>("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const { isOpen, onOpen, onClose } = useDisclosure();
-  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [joined, setJoined] = useState(false);
 
-  // Scroll to bottom whenever messages change
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
-
+  // Auto-join if sessionId is in the URL
   useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
-
-  useEffect(() => {
-    if (!currentUser) {
-      onOpen();
+    const urlSessionId = searchParams.get('sessionId');
+    if (urlSessionId && !joined) {
+      setSessionId(urlSessionId);
+      setJoined(true);
     }
-  }, [currentUser, onOpen]);
+  }, [searchParams, joined]);
 
   useEffect(() => {
-    if (!sessionId) return;
-    // Subscribe to Firestore messages for this session
-    const q = query(collection(db, `sessions/${sessionId}/messages`), orderBy('timestamp'));
+    if (!joined || !sessionId) return;
+    const q = query(collection(db, `sessions/${sessionId}/messages`), orderBy("timestamp"));
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const msgs: Message[] = [];
       querySnapshot.forEach((doc) => {
@@ -79,24 +40,13 @@ export default function Chat() {
       setMessages(msgs);
     });
     return () => unsubscribe();
-  }, [sessionId]);
+  }, [joined, sessionId]);
 
-  // When user selects a user, generate a new sessionId and create session doc
-  const handleUserSelect = async (user: 'User 1' | 'User 2') => {
-    const newSessionId = uuidv4();
-    setCurrentUser(user);
-    setSessionId(newSessionId);
-    // Set User 1 presence to online first
-    await setDoc(doc(db, `sessions/${newSessionId}/presence/user1`), { online: true });
-    // Then create session doc with archived: false
-    await setDoc(doc(db, 'sessions', newSessionId), { archived: false }, { merge: true });
-  };
-
-  // Presence: set online on join, offline on unload
+  // Presence tracking for User 2
   useEffect(() => {
-    if (!sessionId || currentUser !== 'User 1') return;
+    if (!sessionId || !joined) return;
     
-    const presenceRef = doc(db, `sessions/${sessionId}/presence/user1`);
+    const presenceRef = doc(db, `sessions/${sessionId}/presence/user2`);
     
     const setOnline = async () => {
       try {
@@ -105,7 +55,7 @@ export default function Chat() {
           lastSeen: new Date(),
           heartbeat: Date.now()
         }, { merge: true });
-        console.log('User 1: Set online');
+        console.log('User 2: Set online');
       } catch (error) {
         console.error('Error setting online:', error);
       }
@@ -118,7 +68,7 @@ export default function Chat() {
           lastSeen: new Date(),
           heartbeat: Date.now()
         }, { merge: true });
-        console.log('User 1: Set offline');
+        console.log('User 2: Set offline');
       } catch (error) {
         console.error('Error setting offline:', error);
       }
@@ -135,7 +85,7 @@ export default function Chat() {
           lastSeen: new Date(),
           heartbeat: Date.now()
         }, { merge: true });
-        console.log('User 1: Heartbeat update');
+        console.log('User 2: Heartbeat update');
       } catch (error) {
         console.error('Error in heartbeat:', error);
       }
@@ -143,16 +93,16 @@ export default function Chat() {
     
     // Handle page unload
     const handleBeforeUnload = () => {
-      console.log('User 1: Page unloading, setting offline');
+      console.log('User 2: Page unloading, setting offline');
       setOffline();
     };
     
-    // Handle visibility change (tab switch, minimize)
+    // Handle visibility change
     const handleVisibilityChange = () => {
       if (document.hidden) {
-        console.log('User 1: Page hidden');
+        console.log('User 2: Page hidden');
       } else {
-        console.log('User 1: Page visible again');
+        console.log('User 2: Page visible again');
         setOnline();
       }
     };
@@ -161,48 +111,65 @@ export default function Chat() {
     document.addEventListener('visibilitychange', handleVisibilityChange);
     
     return () => {
-      console.log('User 1: Cleaning up presence');
+      console.log('User 2: Cleaning up presence');
       clearInterval(heartbeatInterval);
       setOffline();
       window.removeEventListener('beforeunload', handleBeforeUnload);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [sessionId, currentUser]);
+  }, [sessionId, joined]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
   const handleSend = async () => {
     if (!inputCode.trim() || !sessionId) return;
     await addDoc(collection(db, `sessions/${sessionId}/messages`), {
-      sender: currentUser,
+      sender: "User 2",
       content: inputCode,
       timestamp: new Date(),
     });
-    setInputCode('');
+    setInputCode("");
   };
 
   const handleKeyPress = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === 'Enter' && !event.shiftKey) {
+    if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       handleSend();
     }
   };
 
+  if (!joined) {
+    return (
+      <Flex minH="100vh" align="center" justify="center" bg="#FCFDFD">
+        <Box bg="white" p={8} borderRadius="md" boxShadow="md" minW="320px">
+          <form
+            onSubmit={e => {
+              e.preventDefault();
+              if (inputSessionId.trim()) {
+                setSessionId(inputSessionId.trim());
+                setJoined(true);
+              }
+            }}
+          >
+            <Input
+              placeholder="Enter session ID"
+              value={inputSessionId}
+              onChange={e => setInputSessionId(e.target.value)}
+              mb={4}
+            />
+            <Button type="submit" colorScheme="blue" w="100%">Join as User 2</Button>
+          </form>
+        </Box>
+      </Flex>
+    );
+  }
+
   return (
     <Box minH="100vh" bg="#FCFDFD" display="flex" flexDirection="column" justifyContent="flex-start" alignItems="center">
-      {/* User selection modal */}
-      <Modal isOpen={!currentUser} onClose={() => {}} isCentered closeOnOverlayClick={false} closeOnEsc={false}>
-        <ModalOverlay />
-        <ModalContent>
-          <ModalHeader>Please join as User 1</ModalHeader>
-          <ModalBody>
-            <Flex direction="column" gap={4} alignItems="center">
-              <Button colorScheme="blue" w="100%" onClick={() => handleUserSelect('User 1')}>Join as User 1</Button>
-            </Flex>
-          </ModalBody>
-          <ModalFooter />
-        </ModalContent>
-      </Modal>
       <Box
-        w={{ base: '100%', sm: '90%', md: '600px' }}
+        w={{ base: "100%", sm: "90%", md: "600px" }}
         maxW="100%"
         flex="1"
         display="flex"
@@ -214,18 +181,18 @@ export default function Chat() {
           <Box
             key={idx}
             display="flex"
-            justifyContent={msg.sender === 'User 1' ? 'flex-start' : 'flex-end'}
+            justifyContent={msg.sender === "User 1" ? "flex-start" : "flex-end"}
             mb={2}
           >
             <Box
-              bg={msg.sender === 'User 1' ? '#E5E7EB' : '#9CA3AF'}
+              bg={msg.sender === "User 1" ? "#E5E7EB" : "#9CA3AF"}
               color="#222"
               px={4}
               py={3}
               borderRadius="8px"
               maxW="80%"
               fontSize="md"
-              style={{ boxShadow: 'none' }}
+              style={{ boxShadow: "none" }}
             >
               {msg.content}
             </Box>
@@ -246,23 +213,22 @@ export default function Chat() {
         justifyContent="center"
         zIndex={10}
       >
-        <Box w={{ base: '100%', sm: '90%', md: '600px' }}>
+        <Box w={{ base: "100%", sm: "90%", md: "600px" }}>
           <Flex as="form" onSubmit={e => { e.preventDefault(); handleSend(); }}>
             <Input
               value={inputCode}
               onChange={e => setInputCode(e.target.value)}
               onKeyDown={handleKeyPress}
-              placeholder={currentUser ? `Type your message...` : ''}
+              placeholder="Type your message..."
               bg="#F3F4F6"
               borderRadius="8px"
               border="1px solid #E5E7EB"
               fontSize="md"
               color="#222"
-              _placeholder={{ color: '#A0AEC0' }}
+              _placeholder={{ color: "#A0AEC0" }}
               mr={2}
               autoFocus
-              _focus={{ boxShadow: 'none', borderColor: '#E5E7EB' }}
-              disabled={!currentUser}
+              _focus={{ boxShadow: "none", borderColor: "#E5E7EB" }}
             />
             <Button
               type="submit"
@@ -271,9 +237,8 @@ export default function Chat() {
               px={6}
               bg="#E5E7EB"
               color="#222"
-              _hover={{ bg: '#D1D5DB' }}
+              _hover={{ bg: "#D1D5DB" }}
               boxShadow="none"
-              disabled={!currentUser}
             >
               Send
             </Button>
@@ -283,3 +248,11 @@ export default function Chat() {
     </Box>
   );
 }
+
+export default function ConfederateChat() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <ConfederateChatContent />
+    </Suspense>
+  );
+} 
