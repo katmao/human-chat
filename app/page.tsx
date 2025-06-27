@@ -22,7 +22,6 @@ import {
   Modal,
   ModalOverlay,
   ModalContent,
-  ModalHeader,
   ModalBody,
   ModalFooter,
 } from '@chakra-ui/react';
@@ -30,11 +29,11 @@ import { useEffect, useState, useRef } from 'react';
 import { MdAutoAwesome, MdBolt, MdEdit, MdPerson } from 'react-icons/md';
 import Bg from '../public/img/chat/bg-image.png';
 import { db } from '../src/firebase';
-import { collection, addDoc, query, orderBy, onSnapshot, doc, setDoc, updateDoc } from 'firebase/firestore';
+import { collection, addDoc, query, orderBy, onSnapshot, doc, setDoc, updateDoc, getDocs, onSnapshot as onDocSnapshot } from 'firebase/firestore';
 import { v4 as uuidv4 } from 'uuid';
 
 interface Message {
-  sender: 'User 1' | 'User 2';
+  sender: 'Participant 1' | 'Participant 2' | 'system';
   content: string;
 }
 
@@ -45,7 +44,7 @@ export default function Chat() {
   // Message history
   const [messages, setMessages] = useState<Message[]>([]);
   // Current user
-  const [currentUser, setCurrentUser] = useState<'User 1' | 'User 2' | null>(null);
+  const [currentUser, setCurrentUser] = useState<'Participant 1' | 'Participant 2' | null>(null);
   // Reference to the messages container
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { isOpen, onOpen, onClose } = useDisclosure();
@@ -82,21 +81,27 @@ export default function Chat() {
   }, [sessionId]);
 
   // When user selects a user, generate a new sessionId and create session doc
-  const handleUserSelect = async (user: 'User 1' | 'User 2') => {
+  const handleUserSelect = async (user: 'Participant 1' | 'Participant 2') => {
     const newSessionId = uuidv4();
     setCurrentUser(user);
     setSessionId(newSessionId);
-    // Set User 1 presence to online first
-    await setDoc(doc(db, `sessions/${newSessionId}/presence/user1`), { online: true });
+    // Set Participant 1 presence to online first
+    await setDoc(doc(db, `sessions/${newSessionId}/presence/participant1`), { online: true });
     // Then create session doc with archived: false
     await setDoc(doc(db, 'sessions', newSessionId), { archived: false }, { merge: true });
+    // Add system message for join
+    await addDoc(collection(db, `sessions/${newSessionId}/messages`), {
+      sender: 'system',
+      content: `${user} has joined`,
+      timestamp: new Date(),
+    });
   };
 
   // Presence: set online on join, offline on unload
   useEffect(() => {
-    if (!sessionId || currentUser !== 'User 1') return;
+    if (!sessionId || currentUser !== 'Participant 1') return;
     
-    const presenceRef = doc(db, `sessions/${sessionId}/presence/user1`);
+    const presenceRef = doc(db, `sessions/${sessionId}/presence/participant1`);
     
     const setOnline = async () => {
       try {
@@ -105,7 +110,7 @@ export default function Chat() {
           lastSeen: new Date(),
           heartbeat: Date.now()
         }, { merge: true });
-        console.log('User 1: Set online');
+        console.log('Participant 1: Set online');
       } catch (error) {
         console.error('Error setting online:', error);
       }
@@ -118,7 +123,13 @@ export default function Chat() {
           lastSeen: new Date(),
           heartbeat: Date.now()
         }, { merge: true });
-        console.log('User 1: Set offline');
+        console.log('Participant 1: Set offline');
+        // Add system message for leave
+        await addDoc(collection(db, `sessions/${sessionId}/messages`), {
+          sender: 'system',
+          content: `Participant 1 has left`,
+          timestamp: new Date(),
+        });
       } catch (error) {
         console.error('Error setting offline:', error);
       }
@@ -135,7 +146,7 @@ export default function Chat() {
           lastSeen: new Date(),
           heartbeat: Date.now()
         }, { merge: true });
-        console.log('User 1: Heartbeat update');
+        console.log('Participant 1: Heartbeat update');
       } catch (error) {
         console.error('Error in heartbeat:', error);
       }
@@ -143,16 +154,16 @@ export default function Chat() {
     
     // Handle page unload
     const handleBeforeUnload = () => {
-      console.log('User 1: Page unloading, setting offline');
+      console.log('Participant 1: Page unloading, setting offline');
       setOffline();
     };
     
     // Handle visibility change (tab switch, minimize)
     const handleVisibilityChange = () => {
       if (document.hidden) {
-        console.log('User 1: Page hidden');
+        console.log('Participant 1: Page hidden');
       } else {
-        console.log('User 1: Page visible again');
+        console.log('Participant 1: Page visible again');
         setOnline();
       }
     };
@@ -161,12 +172,35 @@ export default function Chat() {
     document.addEventListener('visibilitychange', handleVisibilityChange);
     
     return () => {
-      console.log('User 1: Cleaning up presence');
+      console.log('Participant 1: Cleaning up presence');
       clearInterval(heartbeatInterval);
       setOffline();
       window.removeEventListener('beforeunload', handleBeforeUnload);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
+  }, [sessionId, currentUser]);
+
+  // Listen for Participant 2 presence and add join message if needed
+  useEffect(() => {
+    if (!sessionId || currentUser !== 'Participant 1') return;
+    const presenceRef = doc(db, `sessions/${sessionId}/presence/participant2`);
+    const unsubscribe = onDocSnapshot(presenceRef, async (docSnap) => {
+      const data = docSnap.data();
+      if (data?.online) {
+        // Check if join message already exists
+        const q = query(collection(db, `sessions/${sessionId}/messages`), orderBy('timestamp'));
+        const snapshot = await getDocs(q);
+        const alreadyJoined = snapshot.docs.some(doc => doc.data().content === 'Participant 2 has joined');
+        if (!alreadyJoined) {
+          await addDoc(collection(db, `sessions/${sessionId}/messages`), {
+            sender: 'system',
+            content: 'Participant 2 has joined',
+            timestamp: new Date(),
+          });
+        }
+      }
+    });
+    return () => unsubscribe();
   }, [sessionId, currentUser]);
 
   const handleSend = async () => {
@@ -192,10 +226,9 @@ export default function Chat() {
       <Modal isOpen={!currentUser} onClose={() => {}} isCentered closeOnOverlayClick={false} closeOnEsc={false}>
         <ModalOverlay />
         <ModalContent>
-          <ModalHeader>Please join as User 1</ModalHeader>
           <ModalBody>
             <Flex direction="column" gap={4} alignItems="center">
-              <Button colorScheme="blue" w="100%" onClick={() => handleUserSelect('User 1')}>Join as User 1</Button>
+              <Button colorScheme="blue" w="100%" onClick={() => handleUserSelect('Participant 1')}>Join as Participant 1</Button>
             </Flex>
           </ModalBody>
           <ModalFooter />
@@ -211,25 +244,33 @@ export default function Chat() {
         pb={24}
       >
         {messages.map((msg, idx) => (
-          <Box
-            key={idx}
-            display="flex"
-            justifyContent={msg.sender === 'User 1' ? 'flex-start' : 'flex-end'}
-            mb={2}
-          >
-            <Box
-              bg={msg.sender === 'User 1' ? '#E5E7EB' : '#9CA3AF'}
-              color="#222"
-              px={4}
-              py={3}
-              borderRadius="8px"
-              maxW="80%"
-              fontSize="md"
-              style={{ boxShadow: 'none' }}
-            >
-              {msg.content}
+          msg.sender === 'system' ? (
+            <Box key={idx} display="flex" justifyContent="center" mb={2}>
+              <Box bg="#F3F4F6" color="#666" px={4} py={2} borderRadius="8px" fontSize="sm" fontStyle="italic">
+                {msg.content}
+              </Box>
             </Box>
-          </Box>
+          ) : (
+            <Box
+              key={idx}
+              display="flex"
+              justifyContent={msg.sender === 'Participant 1' ? 'flex-end' : 'flex-start'}
+              mb={2}
+            >
+              <Box
+                bg={msg.sender === 'Participant 1' ? '#9CA3AF' : '#E5E7EB'}
+                color="#222"
+                px={4}
+                py={3}
+                borderRadius="8px"
+                maxW="80%"
+                fontSize="md"
+                style={{ boxShadow: 'none' }}
+              >
+                {msg.content}
+              </Box>
+            </Box>
+          )
         ))}
         <div ref={messagesEndRef} />
       </Box>

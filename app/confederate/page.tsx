@@ -2,11 +2,11 @@
 import { useEffect, useRef, useState, Suspense } from "react";
 import { Box, Button, Flex, Input, useDisclosure, Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalFooter } from "@chakra-ui/react";
 import { db } from "../../src/firebase";
-import { collection, addDoc, query, orderBy, onSnapshot, doc, setDoc } from "firebase/firestore";
+import { collection, addDoc, query, orderBy, onSnapshot, doc, setDoc, getDocs, onSnapshot as onDocSnapshot } from "firebase/firestore";
 import { useSearchParams } from 'next/navigation';
 
 interface Message {
-  sender: "User 1" | "User 2";
+  sender: "Participant 1" | "Participant 2" | "system";
   content: string;
 }
 
@@ -42,11 +42,11 @@ function ConfederateChatContent() {
     return () => unsubscribe();
   }, [joined, sessionId]);
 
-  // Presence tracking for User 2
+  // Presence tracking for Participant 2
   useEffect(() => {
     if (!sessionId || !joined) return;
     
-    const presenceRef = doc(db, `sessions/${sessionId}/presence/user2`);
+    const presenceRef = doc(db, `sessions/${sessionId}/presence/participant2`);
     
     const setOnline = async () => {
       try {
@@ -55,7 +55,7 @@ function ConfederateChatContent() {
           lastSeen: new Date(),
           heartbeat: Date.now()
         }, { merge: true });
-        console.log('User 2: Set online');
+        console.log('Participant 2: Set online');
       } catch (error) {
         console.error('Error setting online:', error);
       }
@@ -68,7 +68,13 @@ function ConfederateChatContent() {
           lastSeen: new Date(),
           heartbeat: Date.now()
         }, { merge: true });
-        console.log('User 2: Set offline');
+        console.log('Participant 2: Set offline');
+        // Add system message for leave
+        await addDoc(collection(db, `sessions/${sessionId}/messages`), {
+          sender: 'system',
+          content: `Participant 2 has left`,
+          timestamp: new Date(),
+        });
       } catch (error) {
         console.error('Error setting offline:', error);
       }
@@ -85,7 +91,7 @@ function ConfederateChatContent() {
           lastSeen: new Date(),
           heartbeat: Date.now()
         }, { merge: true });
-        console.log('User 2: Heartbeat update');
+        console.log('Participant 2: Heartbeat update');
       } catch (error) {
         console.error('Error in heartbeat:', error);
       }
@@ -93,16 +99,16 @@ function ConfederateChatContent() {
     
     // Handle page unload
     const handleBeforeUnload = () => {
-      console.log('User 2: Page unloading, setting offline');
+      console.log('Participant 2: Page unloading, setting offline');
       setOffline();
     };
     
     // Handle visibility change
     const handleVisibilityChange = () => {
       if (document.hidden) {
-        console.log('User 2: Page hidden');
+        console.log('Participant 2: Page hidden');
       } else {
-        console.log('User 2: Page visible again');
+        console.log('Participant 2: Page visible again');
         setOnline();
       }
     };
@@ -111,12 +117,35 @@ function ConfederateChatContent() {
     document.addEventListener('visibilitychange', handleVisibilityChange);
     
     return () => {
-      console.log('User 2: Cleaning up presence');
+      console.log('Participant 2: Cleaning up presence');
       clearInterval(heartbeatInterval);
       setOffline();
       window.removeEventListener('beforeunload', handleBeforeUnload);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
+  }, [sessionId, joined]);
+
+  // Listen for Participant 1 presence and add leave message if needed
+  useEffect(() => {
+    if (!sessionId || !joined) return;
+    const presenceRef = doc(db, `sessions/${sessionId}/presence/participant1`);
+    const unsubscribe = onDocSnapshot(presenceRef, async (docSnap) => {
+      const data = docSnap.data();
+      if (data && data.online === false) {
+        // Check if leave message already exists
+        const q = query(collection(db, `sessions/${sessionId}/messages`), orderBy('timestamp'));
+        const snapshot = await getDocs(q);
+        const alreadyLeft = snapshot.docs.some(doc => doc.data().content === 'Participant 1 has left');
+        if (!alreadyLeft) {
+          await addDoc(collection(db, `sessions/${sessionId}/messages`), {
+            sender: 'system',
+            content: 'Participant 1 has left',
+            timestamp: new Date(),
+          });
+        }
+      }
+    });
+    return () => unsubscribe();
   }, [sessionId, joined]);
 
   useEffect(() => {
@@ -126,7 +155,7 @@ function ConfederateChatContent() {
   const handleSend = async () => {
     if (!inputCode.trim() || !sessionId) return;
     await addDoc(collection(db, `sessions/${sessionId}/messages`), {
-      sender: "User 2",
+      sender: "Participant 2",
       content: inputCode,
       timestamp: new Date(),
     });
@@ -159,7 +188,7 @@ function ConfederateChatContent() {
               onChange={e => setInputSessionId(e.target.value)}
               mb={4}
             />
-            <Button type="submit" colorScheme="blue" w="100%">Join as User 2</Button>
+            <Button type="submit" colorScheme="blue" w="100%">Join as Participant 2</Button>
           </form>
         </Box>
       </Flex>
@@ -178,25 +207,33 @@ function ConfederateChatContent() {
         pb={24}
       >
         {messages.map((msg, idx) => (
-          <Box
-            key={idx}
-            display="flex"
-            justifyContent={msg.sender === "User 1" ? "flex-start" : "flex-end"}
-            mb={2}
-          >
-            <Box
-              bg={msg.sender === "User 1" ? "#E5E7EB" : "#9CA3AF"}
-              color="#222"
-              px={4}
-              py={3}
-              borderRadius="8px"
-              maxW="80%"
-              fontSize="md"
-              style={{ boxShadow: "none" }}
-            >
-              {msg.content}
+          msg.sender === 'system' ? (
+            <Box key={idx} display="flex" justifyContent="center" mb={2}>
+              <Box bg="#F3F4F6" color="#666" px={4} py={2} borderRadius="8px" fontSize="sm" fontStyle="italic">
+                {msg.content}
+              </Box>
             </Box>
-          </Box>
+          ) : (
+            <Box
+              key={idx}
+              display="flex"
+              justifyContent={msg.sender === "Participant 1" ? "flex-start" : "flex-end"}
+              mb={2}
+            >
+              <Box
+                bg={msg.sender === "Participant 1" ? "#E5E7EB" : "#9CA3AF"}
+                color="#222"
+                px={4}
+                py={3}
+                borderRadius="8px"
+                maxW="80%"
+                fontSize="md"
+                style={{ boxShadow: "none" }}
+              >
+                {msg.content}
+              </Box>
+            </Box>
+          )
         ))}
         <div ref={messagesEndRef} />
       </Box>

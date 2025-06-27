@@ -9,8 +9,8 @@ interface Session {
   id: string;
   archived: boolean;
   presence: {
-    user1?: { online: boolean };
-    user2?: { online: boolean };
+    participant1?: { online: boolean };
+    participant2?: { online: boolean };
   };
 }
 
@@ -31,8 +31,8 @@ export default function AdminPage() {
             const data = docSnap.data();
             
             // Get presence info
-            const user1Snap = await getDoc(doc(db, `sessions/${sessionId}/presence/user1`));
-            const user2Snap = await getDoc(doc(db, `sessions/${sessionId}/presence/user2`));
+            const user1Snap = await getDoc(doc(db, `sessions/${sessionId}/presence/participant1`));
+            const user2Snap = await getDoc(doc(db, `sessions/${sessionId}/presence/participant2`));
             
             const user1Data = user1Snap.exists() ? user1Snap.data() as { online: boolean; lastSeen?: any; heartbeat?: number } : null;
             const user2Data = user2Snap.exists() ? user2Snap.data() as { online: boolean; lastSeen?: any; heartbeat?: number } : null;
@@ -42,12 +42,12 @@ export default function AdminPage() {
             const user1Online = user1Data?.online && user1Data?.heartbeat && (now - user1Data.heartbeat) < 120000;
             const user2Online = user2Data?.online && user2Data?.heartbeat && (now - user2Data.heartbeat) < 120000;
             
-            console.log(`Session ${sessionId}: User1 online=${user1Online}, User2 online=${user2Online}`);
+            console.log(`Session ${sessionId}: Participant1 online=${user1Online}, Participant2 online=${user2Online}`);
             
-            // Archive session if both users are offline or have stale heartbeats
+            // Archive session if both participants are offline or have stale heartbeats
             if (!user1Online && !user2Online) {
               try {
-                console.log(`Archiving session ${sessionId} - both users offline`);
+                console.log(`Archiving session ${sessionId} - both participants offline`);
                 await updateDoc(doc(db, 'sessions', sessionId), { archived: true });
               } catch (error) {
                 console.error('Error archiving session:', error);
@@ -59,8 +59,8 @@ export default function AdminPage() {
               id: sessionId,
               archived: data.archived,
               presence: {
-                user1: user1Data ? { online: Boolean(user1Online) } : undefined,
-                user2: user2Data ? { online: Boolean(user2Online) } : undefined,
+                participant1: user1Data ? { online: Boolean(user1Online) } : undefined,
+                participant2: user2Data ? { online: Boolean(user2Online) } : undefined,
               },
             });
           }
@@ -97,12 +97,12 @@ export default function AdminPage() {
               <Box>
                 <Text fontWeight="bold">Session ID: {session.id}</Text>
                 <HStack mt={2}>
-                  <Badge colorScheme={session.presence.user1?.online ? "green" : "red"}>User 1: {session.presence.user1?.online ? "Online" : "Offline"}</Badge>
-                  <Badge colorScheme={session.presence.user2?.online ? "green" : "red"}>User 2: {session.presence.user2?.online ? "Online" : "Offline"}</Badge>
+                  <Badge colorScheme={session.presence.participant1?.online ? "green" : "red"}>Participant 1: {session.presence.participant1?.online ? "Online" : "Offline"}</Badge>
+                  <Badge colorScheme={session.presence.participant2?.online ? "green" : "red"}>Participant 2: {session.presence.participant2?.online ? "Online" : "Offline"}</Badge>
                 </HStack>
               </Box>
               <Button colorScheme="blue" onClick={() => router.push(`/confederate?sessionId=${session.id}`)}>
-                Join as User 2
+                Join as Participant 2
               </Button>
             </HStack>
           </Box>
