@@ -38,27 +38,22 @@ export default function AdminPage() {
             const user1Data = user1Snap.exists() ? user1Snap.data() as { online: boolean; lastSeen?: any; heartbeat?: number } : null;
             const user2Data = user2Snap.exists() ? user2Snap.data() as { online: boolean; lastSeen?: any; heartbeat?: number } : null;
             
-            // Check if heartbeats are stale (more than 5 minutes old for more lenient archiving)
+            // Check if heartbeats are stale (more than 2 minutes old)
             const now = Date.now();
-            const user1Online = user1Data?.online && user1Data?.heartbeat && (now - user1Data.heartbeat) < 300000; // 5 minutes
-            const user2Online = user2Data?.online && user2Data?.heartbeat && (now - user2Data.heartbeat) < 300000; // 5 minutes
+            const user1Online = user1Data?.online && user1Data?.heartbeat && (now - user1Data.heartbeat) < 120000;
+            const user2Online = user2Data?.online && user2Data?.heartbeat && (now - user2Data.heartbeat) < 120000;
             
-            // Only archive if BOTH participants are offline AND we've given enough time
-            // Don't archive immediately when only one participant is online
-            if (!user1Online && !user2Online && (user1Data || user2Data)) {
-              // Check if both participants have been offline for more than 10 minutes
-              const user1LastSeen = user1Data?.lastSeen?.toDate?.()?.getTime() || 0;
-              const user2LastSeen = user2Data?.lastSeen?.toDate?.()?.getTime() || 0;
-              const lastActivity = Math.max(user1LastSeen, user2LastSeen);
-              
-              if (now - lastActivity > 600000) { // 10 minutes of inactivity
-                try {
-                  await updateDoc(doc(db, 'sessions', sessionId), { archived: true });
-                } catch (error) {
-                  console.error('Error archiving session:', error);
-                }
-                continue; // Don't show archived sessions
+            console.log(`Session ${sessionId}: Participant1 online=${user1Online}, Participant2 online=${user2Online}`);
+            
+            // Archive session if both participants are offline or have stale heartbeats
+            if (!user1Online && !user2Online) {
+              try {
+                console.log(`Archiving session ${sessionId} - both participants offline`);
+                await updateDoc(doc(db, 'sessions', sessionId), { archived: true });
+              } catch (error) {
+                console.error('Error archiving session:', error);
               }
+              continue; // Don't show archived sessions
             }
             
             sessionList.push({
@@ -112,7 +107,6 @@ export default function AdminPage() {
   return (
     <Box p={8}>
       <Text fontSize="2xl" mb={6}>Waiting Room / Admin</Text>
-      
       <VStack align="stretch" spacing={4}>
         {sessions.length === 0 && <Text>No active sessions.</Text>}
         {sessions.map(session => (

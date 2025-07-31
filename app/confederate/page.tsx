@@ -4,7 +4,6 @@ import { Box, Button, Flex, Input, useDisclosure, Modal, ModalOverlay, ModalCont
 import { db } from "../../src/firebase";
 import { collection, addDoc, query, orderBy, onSnapshot, doc, setDoc, getDocs, onSnapshot as onDocSnapshot } from "firebase/firestore";
 import { useSearchParams } from 'next/navigation';
-import { addMessageToLog, finalizeInteractionLog } from '../../src/utils/logging';
 
 interface Message {
   sender: "Participant 1" | "Participant 2" | "system";
@@ -19,7 +18,6 @@ function ConfederateChatContent() {
   const [inputCode, setInputCode] = useState<string>("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [joined, setJoined] = useState(false);
-  const [logId, setLogId] = useState<string | null>(null);
 
   // Auto-join if sessionId is in the URL
   useEffect(() => {
@@ -43,16 +41,6 @@ function ConfederateChatContent() {
     });
     return () => unsubscribe();
   }, [joined, sessionId]);
-
-  // Find the existing log for this session
-  useEffect(() => {
-    if (!sessionId || !joined) return;
-    
-    // We need to find the existing log for this session
-    // For now, we'll use a simple approach - the log should already exist from Participant 1
-    // In a production app, you might want to query for the existing log
-    console.log('Looking for existing log for session:', sessionId);
-  }, [sessionId, joined]);
 
   // Presence tracking for Participant 2
   useEffect(() => {
@@ -82,21 +70,11 @@ function ConfederateChatContent() {
         }, { merge: true });
         console.log('Participant 2: Set offline');
         // Add system message for leave
-        const leaveMessage = {
-          sender: 'system' as const,
+        await addDoc(collection(db, `sessions/${sessionId}/messages`), {
+          sender: 'system',
           content: `Participant 2 has left`,
           timestamp: new Date(),
-        };
-        await addDoc(collection(db, `sessions/${sessionId}/messages`), leaveMessage);
-        
-        // Log the leave message if we have a logId
-        if (logId) {
-          try {
-            await addMessageToLog(logId, leaveMessage);
-          } catch (error) {
-            console.error('Error logging leave message:', error);
-          }
-        }
+        });
       } catch (error) {
         console.error('Error setting offline:', error);
       }
@@ -123,10 +101,6 @@ function ConfederateChatContent() {
     const handleBeforeUnload = () => {
       console.log('Participant 2: Page unloading, setting offline');
       setOffline();
-      // Finalize the interaction log
-      if (logId) {
-        finalizeInteractionLog(logId);
-      }
     };
     
     // Handle visibility change
@@ -146,14 +120,10 @@ function ConfederateChatContent() {
       console.log('Participant 2: Cleaning up presence');
       clearInterval(heartbeatInterval);
       setOffline();
-      // Finalize the interaction log
-      if (logId) {
-        finalizeInteractionLog(logId);
-      }
       window.removeEventListener('beforeunload', handleBeforeUnload);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [sessionId, joined, logId]);
+  }, [sessionId, joined]);
 
   // Listen for Participant 1 presence and add leave message if needed
   useEffect(() => {
@@ -167,26 +137,16 @@ function ConfederateChatContent() {
         const snapshot = await getDocs(q);
         const alreadyLeft = snapshot.docs.some(doc => doc.data().content === 'Participant 1 has left');
         if (!alreadyLeft) {
-          const leaveMessage = {
-            sender: 'system' as const,
+          await addDoc(collection(db, `sessions/${sessionId}/messages`), {
+            sender: 'system',
             content: 'Participant 1 has left',
             timestamp: new Date(),
-          };
-          await addDoc(collection(db, `sessions/${sessionId}/messages`), leaveMessage);
-          
-          // Log the leave message if we have a logId
-          if (logId) {
-            try {
-              await addMessageToLog(logId, leaveMessage);
-            } catch (error) {
-              console.error('Error logging Participant 1 leave message:', error);
-            }
-          }
+          });
         }
       }
     });
     return () => unsubscribe();
-  }, [sessionId, joined, logId]);
+  }, [sessionId, joined]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -194,24 +154,11 @@ function ConfederateChatContent() {
 
   const handleSend = async () => {
     if (!inputCode.trim() || !sessionId) return;
-    
-    const message = {
-      sender: "Participant 2" as const,
+    await addDoc(collection(db, `sessions/${sessionId}/messages`), {
+      sender: "Participant 2",
       content: inputCode,
       timestamp: new Date(),
-    };
-    
-    await addDoc(collection(db, `sessions/${sessionId}/messages`), message);
-    
-    // Log the message if we have a logId
-    if (logId) {
-      try {
-        await addMessageToLog(logId, message);
-      } catch (error) {
-        console.error('Error logging message:', error);
-      }
-    }
-    
+    });
     setInputCode("");
   };
 
