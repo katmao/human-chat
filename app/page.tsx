@@ -254,7 +254,7 @@ export default function Chat() {
   }, [sessionId, currentUser, logId]);
 
   const handleSend = async () => {
-    if (!inputCode.trim() || !sessionId) return;
+    if (!inputCode.trim() || !sessionId || !currentUser) return;
     
     const message = {
       sender: currentUser,
