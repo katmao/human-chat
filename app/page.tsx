@@ -31,6 +31,7 @@ import Bg from '../public/img/chat/bg-image.png';
 import { db } from '../src/firebase';
 import { collection, addDoc, query, orderBy, onSnapshot, doc, setDoc, updateDoc, getDocs, onSnapshot as onDocSnapshot } from 'firebase/firestore';
 import { v4 as uuidv4 } from 'uuid';
+import { createInteractionLog, addMessageToLog, finalizeInteractionLog } from '../src/utils/logging';
 
 interface Message {
   sender: 'Participant 1' | 'Participant 2' | 'system';
@@ -49,6 +50,7 @@ export default function Chat() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { isOpen, onOpen, onClose } = useDisclosure();
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [logId, setLogId] = useState<string | null>(null);
 
   // Scroll to bottom whenever messages change
   const scrollToBottom = () => {
@@ -85,16 +87,36 @@ export default function Chat() {
     const newSessionId = uuidv4();
     setCurrentUser(user);
     setSessionId(newSessionId);
+    
+    // Create interaction log
+    try {
+      const newLogId = await createInteractionLog(newSessionId);
+      setLogId(newLogId);
+      console.log('Created interaction log:', newLogId);
+    } catch (error) {
+      console.error('Error creating interaction log:', error);
+    }
+    
     // Set Participant 1 presence to online first
     await setDoc(doc(db, `sessions/${newSessionId}/presence/participant1`), { online: true });
     // Then create session doc with archived: false
     await setDoc(doc(db, 'sessions', newSessionId), { archived: false }, { merge: true });
     // Add system message for join
-    await addDoc(collection(db, `sessions/${newSessionId}/messages`), {
-      sender: 'system',
+    const joinMessage = {
+      sender: 'system' as const,
       content: `${user} has joined`,
       timestamp: new Date(),
-    });
+    };
+    await addDoc(collection(db, `sessions/${newSessionId}/messages`), joinMessage);
+    
+    // Log the join message
+    if (logId) {
+      try {
+        await addMessageToLog(logId, joinMessage);
+      } catch (error) {
+        console.error('Error logging join message:', error);
+      }
+    }
   };
 
   // Presence: set online on join, offline on unload
@@ -125,11 +147,21 @@ export default function Chat() {
         }, { merge: true });
         console.log('Participant 1: Set offline');
         // Add system message for leave
-        await addDoc(collection(db, `sessions/${sessionId}/messages`), {
-          sender: 'system',
+        const leaveMessage = {
+          sender: 'system' as const,
           content: `Participant 1 has left`,
           timestamp: new Date(),
-        });
+        };
+        await addDoc(collection(db, `sessions/${sessionId}/messages`), leaveMessage);
+        
+        // Log the leave message
+        if (logId) {
+          try {
+            await addMessageToLog(logId, leaveMessage);
+          } catch (error) {
+            console.error('Error logging leave message:', error);
+          }
+        }
       } catch (error) {
         console.error('Error setting offline:', error);
       }
@@ -156,6 +188,10 @@ export default function Chat() {
     const handleBeforeUnload = () => {
       console.log('Participant 1: Page unloading, setting offline');
       setOffline();
+      // Finalize the interaction log
+      if (logId) {
+        finalizeInteractionLog(logId);
+      }
     };
     
     // Handle visibility change (tab switch, minimize)
@@ -175,10 +211,14 @@ export default function Chat() {
       console.log('Participant 1: Cleaning up presence');
       clearInterval(heartbeatInterval);
       setOffline();
+      // Finalize the interaction log
+      if (logId) {
+        finalizeInteractionLog(logId);
+      }
       window.removeEventListener('beforeunload', handleBeforeUnload);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [sessionId, currentUser]);
+  }, [sessionId, currentUser, logId]);
 
   // Listen for Participant 2 presence and add join message if needed
   useEffect(() => {
@@ -192,24 +232,47 @@ export default function Chat() {
         const snapshot = await getDocs(q);
         const alreadyJoined = snapshot.docs.some(doc => doc.data().content === 'Participant 2 has joined');
         if (!alreadyJoined) {
-          await addDoc(collection(db, `sessions/${sessionId}/messages`), {
-            sender: 'system',
+          const joinMessage = {
+            sender: 'system' as const,
             content: 'Participant 2 has joined',
             timestamp: new Date(),
-          });
+          };
+          await addDoc(collection(db, `sessions/${sessionId}/messages`), joinMessage);
+          
+          // Log the join message
+          if (logId) {
+            try {
+              await addMessageToLog(logId, joinMessage);
+            } catch (error) {
+              console.error('Error logging Participant 2 join message:', error);
+            }
+          }
         }
       }
     });
     return () => unsubscribe();
-  }, [sessionId, currentUser]);
+  }, [sessionId, currentUser, logId]);
 
   const handleSend = async () => {
     if (!inputCode.trim() || !sessionId) return;
-    await addDoc(collection(db, `sessions/${sessionId}/messages`), {
+    
+    const message = {
       sender: currentUser,
       content: inputCode,
       timestamp: new Date(),
-    });
+    };
+    
+    await addDoc(collection(db, `sessions/${sessionId}/messages`), message);
+    
+    // Log the message
+    if (logId) {
+      try {
+        await addMessageToLog(logId, message);
+      } catch (error) {
+        console.error('Error logging message:', error);
+      }
+    }
+    
     setInputCode('');
   };
 

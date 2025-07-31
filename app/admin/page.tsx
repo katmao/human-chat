@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Box, Button, Flex, Text, Badge, VStack, HStack } from "@chakra-ui/react";
+import { Box, Button, Flex, Text, Badge, VStack, HStack, useToast } from "@chakra-ui/react";
 import { db } from "../../src/firebase";
 import { collection, doc, getDoc, onSnapshot, updateDoc, query, where } from "firebase/firestore";
 import { useRouter } from "next/navigation";
@@ -18,6 +18,7 @@ export default function AdminPage() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
+  const toast = useToast();
 
   useEffect(() => {
     try {
@@ -68,15 +69,32 @@ export default function AdminPage() {
           setLoading(false);
         } catch (error) {
           console.error('Error processing sessions:', error);
+          toast({
+            title: "Error",
+            description: "Failed to load sessions",
+            status: "error",
+            duration: 5000,
+            isClosable: true,
+          });
           setLoading(false);
         }
+      }, (error) => {
+        console.error('Error in snapshot listener:', error);
+        toast({
+          title: "Database Error",
+          description: "Failed to load sessions. Please check your permissions.",
+          status: "error",
+          duration: 5000,
+          isClosable: true,
+        });
+        setLoading(false);
       });
       return () => unsub();
     } catch (error) {
       console.error('Error setting up admin page:', error);
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   if (loading) {
     return (
