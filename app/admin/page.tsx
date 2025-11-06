@@ -1,9 +1,10 @@
 "use client";
 import { useEffect, useState } from "react";
 import { Box, Button, Flex, Text, Badge, VStack, HStack, useToast } from "@chakra-ui/react";
-import { db } from "../../src/firebase";
+import { db, auth } from "../../src/firebase";
 import { collection, doc, getDoc, onSnapshot, updateDoc, query, where } from "firebase/firestore";
 import { useRouter } from "next/navigation";
+import { signOut } from "firebase/auth";
 
 interface Session {
   id: string;
@@ -17,6 +18,7 @@ interface Session {
 export default function AdminPage() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const router = useRouter();
   const toast = useToast();
 
@@ -104,9 +106,34 @@ export default function AdminPage() {
     );
   }
 
+  const handleLogout = async () => {
+    if (isLoggingOut) return;
+    setIsLoggingOut(true);
+    try {
+      await fetch('/api/auth/session', { method: 'DELETE' });
+      await signOut(auth);
+      router.push('/login');
+    } catch (error) {
+      console.error('Failed to log out', error);
+      toast({
+        title: 'Logout failed',
+        description: 'Please refresh the page and try again.',
+        status: 'error',
+        duration: 4000,
+        isClosable: true,
+      });
+      setIsLoggingOut(false);
+    }
+  };
+
   return (
     <Box p={8}>
-      <Text fontSize="2xl" mb={6}>Waiting Room / Admin</Text>
+      <Flex justify="space-between" align="center" mb={6}>
+        <Text fontSize="2xl">Waiting Room / Admin</Text>
+        <Button variant="outline" onClick={handleLogout} isLoading={isLoggingOut}>
+          Log out
+        </Button>
+      </Flex>
       <VStack align="stretch" spacing={4}>
         {sessions.length === 0 && <Text>No active sessions.</Text>}
         {sessions.map(session => (

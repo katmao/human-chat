@@ -14,6 +14,7 @@ import {
   Text,
   useColorMode,
   useColorModeValue,
+  useToast,
 } from '@chakra-ui/react';
 import { SearchBar } from '@/components/navbar/searchBar/SearchBar';
 import { SidebarResponsive } from '@/components/sidebar/Sidebar';
@@ -22,6 +23,10 @@ import { MdInfoOutline } from 'react-icons/md';
 import APIModal from '@/components/apiModal';
 import NavLink from '../link/NavLink';
 import routes from '@/routes';
+import { signOut } from 'firebase/auth';
+import { auth } from '@/firebase';
+import { useRouter } from 'next/navigation';
+import { useState } from 'react';
 
 export default function HeaderLinks(props: {
   secondary: boolean;
@@ -29,6 +34,9 @@ export default function HeaderLinks(props: {
 }) {
   const { secondary, setApiKey } = props;
   const { colorMode, toggleColorMode } = useColorMode();
+  const router = useRouter();
+  const toast = useToast();
+  const [isSigningOut, setIsSigningOut] = useState(false);
   // Chakra Color Mode
   const navbarIcon = useColorModeValue('gray.500', 'white');
   let menuBg = useColorModeValue('white', 'navy.800');
@@ -47,6 +55,27 @@ export default function HeaderLinks(props: {
     { bg: 'gray.200' },
     { bg: 'whiteAlpha.200' },
   );
+
+  const handleLogout = async () => {
+    if (isSigningOut) return;
+    setIsSigningOut(true);
+    try {
+      await fetch('/api/auth/session', { method: 'DELETE' });
+      await signOut(auth);
+      router.push('/login');
+    } catch (error) {
+      console.error('Failed to sign out', error);
+      toast({
+        title: 'Logout failed',
+        description: 'Please refresh and try again.',
+        status: 'error',
+        duration: 4000,
+        isClosable: true,
+      });
+    } finally {
+      setIsSigningOut(false);
+    }
+  };
 
   return (
     <Flex
@@ -248,9 +277,11 @@ export default function HeaderLinks(props: {
               color="red.400"
               borderRadius="8px"
               px="14px"
+              onClick={handleLogout}
+              isDisabled={isSigningOut}
             >
               <Text fontWeight="500" fontSize="sm">
-                Log out
+                {isSigningOut ? 'Logging out…' : 'Log out'}
               </Text>
             </MenuItem>
           </Flex>
