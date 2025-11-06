@@ -28,6 +28,9 @@ yarn-error.log*
 *.pem
 .pnpm-debug.log*
 
+# firebase keys
+serviceAccount*.json
+
 # nextjs
 /.next/
 /out/

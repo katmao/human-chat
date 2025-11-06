@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "export:chat": "ts-node scripts/export-chat-logs.ts"
   },
   "dependencies": {
     "@babel/traverse": "^7.24.6",
@@ -25,10 +26,14 @@
     "@testing-library/user-event": "^12.8.3",
     "@uiw/codemirror-theme-tokyo-night": "^4.19.11",
     "@uiw/react-codemirror": "^4.19.11",
+    "date-fns": "^4.1.0",
+    "date-fns-tz": "^3.2.0",
     "endent": "^2.1.0",
     "eventsource-parser": "^1.0.0",
     "firebase": "^11.9.1",
+    "firebase-admin": "^12.6.0",
     "framer-motion": "^4.1.17",
+    "jose": "^6.1.0",
     "next": "^15.1.6",
     "react": "^19.0.0-rc.1",
     "react-custom-scrollbars-2": "^4.2.1",
@@ -54,7 +59,8 @@
     "eventsource": "^2.0.2",
     "postcss": "^8.4.21",
     "prettier-plugin-tailwindcss": "^0.2.6",
-    "tailwindcss": "^3.3.1"
+    "tailwindcss": "^3.3.1",
+    "ts-node": "^10.9.2"
   },
   "resolutions": {
     "@types/react": "18.0.31",
