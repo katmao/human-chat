@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
 import { adminAuth } from '@/firebaseAdmin';
 
 const SESSION_COOKIE_NAME = 'firebaseSession';
@@ -16,7 +15,13 @@ export async function POST(request: Request) {
 
     const decodedToken = await adminAuth.verifyIdToken(idToken, true);
 
-    cookies().set({
+    const response = NextResponse.json({
+      ok: true,
+      uid: decodedToken.uid,
+      role: decodedToken.role ?? null,
+    });
+
+    response.cookies.set({
       name: SESSION_COOKIE_NAME,
       value: idToken,
       httpOnly: true,
@@ -26,11 +31,7 @@ export async function POST(request: Request) {
       maxAge: SESSION_MAX_AGE_SECONDS,
     });
 
-    return NextResponse.json({
-      ok: true,
-      uid: decodedToken.uid,
-      role: decodedToken.role ?? null,
-    });
+    return response;
   } catch (error) {
     console.error('Session creation failed', error);
     return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
@@ -38,12 +39,14 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE() {
-  cookies().set({
+  const response = NextResponse.json({ ok: true });
+
+  response.cookies.set({
     name: SESSION_COOKIE_NAME,
     value: '',
     path: '/',
     maxAge: 0,
   });
 
-  return NextResponse.json({ ok: true });
+  return response;
 }
