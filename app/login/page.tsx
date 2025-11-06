@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useState } from 'react';
+import { FormEvent, Suspense, useState } from 'react';
 import {
   Alert,
   AlertIcon,
@@ -17,7 +17,7 @@ import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { auth } from '@/firebase';
 import { useRouter, useSearchParams } from 'next/navigation';
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirectPath = searchParams.get('redirect') ?? '/admin';
@@ -113,5 +113,19 @@ export default function LoginPage() {
         </Text>
       </Box>
     </Flex>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <Flex minH="100vh" align="center" justify="center">
+          <Text>Loading...</Text>
+        </Flex>
+      }
+    >
+      <LoginForm />
+    </Suspense>
   );
 }

@@ -31,6 +31,10 @@ yarn-error.log*
 # firebase keys
 serviceAccount*.json
 
+# export artifacts
+chat-logs*.csv
+chat-logs*.json
+
 # nextjs
 /.next/
 /out/
