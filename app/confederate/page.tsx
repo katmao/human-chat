@@ -1,14 +1,49 @@
 "use client";
 import { useEffect, useRef, useState, Suspense } from "react";
-import { Box, Button, Flex, Input, useDisclosure, Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalFooter } from "@chakra-ui/react";
+import { Alert, AlertIcon, Box, Button, Flex, Input, Modal, ModalBody, ModalContent, ModalFooter, ModalOverlay, Text } from "@chakra-ui/react";
 import { db } from "../../src/firebase";
-import { collection, addDoc, query, orderBy, onSnapshot, doc, setDoc, getDocs, onSnapshot as onDocSnapshot } from "firebase/firestore";
+import { collection, addDoc, query, orderBy, onSnapshot, doc, setDoc, getDoc, onSnapshot as onDocSnapshot } from "firebase/firestore";
 import { useSearchParams } from 'next/navigation';
 
 interface Message {
   sender: "Participant 1" | "Participant 2" | "system";
   content: string;
 }
+
+const TOPIC_PROMPTS = [
+  {
+    message: "Please move on to the 2nd topic if you haven't already.",
+    threshold: 8,
+  },
+  {
+    message: "Please move on to the 3rd topic if you haven't already.",
+    threshold: 6,
+  },
+  {
+    message: "Please move on to the 4th topic if you haven't already.",
+    threshold: 6,
+  },
+  {
+    message: "Please move on to the 5th topic if you haven't already.",
+    threshold: 6,
+  },
+  {
+    message: "Please move on to the 6th topic if you haven't already.",
+    threshold: 6,
+  },
+  {
+    message: "Please move on to the 7th topic if you haven't already.",
+    threshold: 6,
+  },
+  {
+    message: "Please move on to the 8th topic if you haven't already.",
+    threshold: 6,
+  },
+  {
+    message: "Please move on to the 9th topic if you haven't already.",
+    threshold: 6,
+  },
+] as const;
 
 function ConfederateChatContent() {
   const searchParams = useSearchParams();
@@ -18,6 +53,8 @@ function ConfederateChatContent() {
   const [inputCode, setInputCode] = useState<string>("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [joined, setJoined] = useState(false);
+  const [shownTopicPrompts, setShownTopicPrompts] = useState(0);
+  const [topicPromptMessage, setTopicPromptMessage] = useState<string | null>(null);
 
   // Auto-join if sessionId is in the URL
   useEffect(() => {
@@ -55,6 +92,7 @@ function ConfederateChatContent() {
           lastSeen: new Date(),
           heartbeat: Date.now()
         }, { merge: true });
+        await setDoc(doc(db, 'sessions', sessionId), { participant2LeftNotified: false }, { merge: true });
         console.log('Participant 2: Set online');
       } catch (error) {
         console.error('Error setting online:', error);
@@ -75,6 +113,7 @@ function ConfederateChatContent() {
           content: `Participant 2 has left`,
           timestamp: new Date(),
         });
+        await setDoc(doc(db, 'sessions', sessionId), { participant2LeftNotified: true }, { merge: true });
       } catch (error) {
         console.error('Error setting offline:', error);
       }
@@ -129,20 +168,24 @@ function ConfederateChatContent() {
   useEffect(() => {
     if (!sessionId || !joined) return;
     const presenceRef = doc(db, `sessions/${sessionId}/presence/participant1`);
+    const sessionRef = doc(db, 'sessions', sessionId);
     const unsubscribe = onDocSnapshot(presenceRef, async (docSnap) => {
       const data = docSnap.data();
+      if (data?.online) {
+        await setDoc(sessionRef, { participant1LeftNotified: false }, { merge: true });
+        return;
+      }
       if (data && data.online === false) {
-        // Check if leave message already exists
-        const q = query(collection(db, `sessions/${sessionId}/messages`), orderBy('timestamp'));
-        const snapshot = await getDocs(q);
-        const alreadyLeft = snapshot.docs.some(doc => doc.data().content === 'Participant 1 has left');
-        if (!alreadyLeft) {
-          await addDoc(collection(db, `sessions/${sessionId}/messages`), {
-            sender: 'system',
-            content: 'Participant 1 has left',
-            timestamp: new Date(),
-          });
+        const sessionSnap = await getDoc(sessionRef);
+        if (sessionSnap.data()?.participant1LeftNotified) {
+          return;
         }
+        await addDoc(collection(db, `sessions/${sessionId}/messages`), {
+          sender: 'system',
+          content: 'Participant 1 has left',
+          timestamp: new Date(),
+        });
+        await setDoc(sessionRef, { participant1LeftNotified: true }, { merge: true });
       }
     });
     return () => unsubscribe();
@@ -151,6 +194,52 @@ function ConfederateChatContent() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  useEffect(() => {
+    setShownTopicPrompts(0);
+    setTopicPromptMessage(null);
+  }, [sessionId]);
+
+  useEffect(() => {
+    if (topicPromptMessage) return;
+    let satisfied = 0;
+    let participantCounts = { p1: 0, p2: 0 };
+
+    for (const msg of messages) {
+      if (msg.sender === "Participant 1") {
+        participantCounts.p1 += 1;
+      } else if (msg.sender === "Participant 2") {
+        participantCounts.p2 += 1;
+      }
+
+      while (
+        satisfied < TOPIC_PROMPTS.length &&
+        participantCounts.p1 >= TOPIC_PROMPTS[satisfied].threshold &&
+        participantCounts.p2 >= TOPIC_PROMPTS[satisfied].threshold
+      ) {
+        participantCounts.p1 -= TOPIC_PROMPTS[satisfied].threshold;
+        participantCounts.p2 -= TOPIC_PROMPTS[satisfied].threshold;
+        satisfied += 1;
+      }
+    }
+
+    if (
+      satisfied > shownTopicPrompts &&
+      shownTopicPrompts < TOPIC_PROMPTS.length
+    ) {
+      const nextIndex = shownTopicPrompts;
+      setTopicPromptMessage(TOPIC_PROMPTS[nextIndex].message);
+      setShownTopicPrompts(nextIndex + 1);
+    }
+  }, [messages, shownTopicPrompts, topicPromptMessage]);
+
+  useEffect(() => {
+    if (!topicPromptMessage) return;
+    const timeout = setTimeout(() => {
+      setTopicPromptMessage(null);
+    }, 8000);
+    return () => clearTimeout(timeout);
+  }, [topicPromptMessage]);
 
   const handleSend = async () => {
     if (!inputCode.trim() || !sessionId) return;
@@ -280,8 +369,23 @@ function ConfederateChatContent() {
               Send
             </Button>
           </Flex>
-        </Box>
       </Box>
+      </Box>
+      {topicPromptMessage && (
+        <Box
+          position="fixed"
+          bottom="90px"
+          left="50%"
+          transform="translateX(-50%)"
+          zIndex={20}
+          w={{ base: "90%", sm: "70%", md: "50%" }}
+        >
+          <Alert status="info" borderRadius="md" boxShadow="lg" alignItems="flex-start">
+            <AlertIcon />
+            <Text>{topicPromptMessage}</Text>
+          </Alert>
+        </Box>
+      )}
     </Box>
   );
 }

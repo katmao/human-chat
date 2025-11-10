@@ -5,6 +5,8 @@ import Link from '@/components/link/Link';
 import MessageBoxChat from '@/components/MessageBox';
 import { ChatBody, OpenAIModel } from '@/types/types';
 import {
+  Alert,
+  AlertIcon,
   Accordion,
   AccordionButton,
   AccordionIcon,
@@ -16,14 +18,14 @@ import {
   Icon,
   Img,
   Input,
+  Modal,
+  ModalBody,
+  ModalContent,
+  ModalFooter,
+  ModalOverlay,
   Text,
   useColorModeValue,
   useDisclosure,
-  Modal,
-  ModalOverlay,
-  ModalContent,
-  ModalBody,
-  ModalFooter,
 } from '@chakra-ui/react';
 import { useEffect, useState, useRef } from 'react';
 import { MdAutoAwesome, MdBolt, MdEdit, MdPerson } from 'react-icons/md';
@@ -37,6 +39,41 @@ interface Message {
   content: string;
 }
 
+const TOPIC_PROMPTS = [
+  {
+    message: "Please move on to the 2nd topic if you haven't already.",
+    threshold: 8,
+  },
+  {
+    message: "Please move on to the 3rd topic if you haven't already.",
+    threshold: 6,
+  },
+  {
+    message: "Please move on to the 4th topic if you haven't already.",
+    threshold: 6,
+  },
+  {
+    message: "Please move on to the 5th topic if you haven't already.",
+    threshold: 6,
+  },
+  {
+    message: "Please move on to the 6th topic if you haven't already.",
+    threshold: 6,
+  },
+  {
+    message: "Please move on to the 7th topic if you haven't already.",
+    threshold: 6,
+  },
+  {
+    message: "Please move on to the 8th topic if you haven't already.",
+    threshold: 6,
+  },
+  {
+    message: "Please move on to the 9th topic if you haven't already.",
+    threshold: 6,
+  },
+] as const;
+
 export default function Chat() {
   // Input States
   const [inputOnSubmit, setInputOnSubmit] = useState<string>('');
@@ -49,6 +86,8 @@ export default function Chat() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { isOpen, onOpen, onClose } = useDisclosure();
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [shownTopicPrompts, setShownTopicPrompts] = useState(0);
+  const [topicPromptMessage, setTopicPromptMessage] = useState<string | null>(null);
 
   // Scroll to bottom whenever messages change
   const scrollToBottom = () => {
@@ -87,8 +126,12 @@ export default function Chat() {
     setSessionId(newSessionId);
     // Set Participant 1 presence to online first
     await setDoc(doc(db, `sessions/${newSessionId}/presence/participant1`), { online: true });
-    // Then create session doc with archived: false
-    await setDoc(doc(db, 'sessions', newSessionId), { archived: false }, { merge: true });
+    // Then create session doc with archived: false and reset leave flags
+    await setDoc(
+      doc(db, 'sessions', newSessionId),
+      { archived: false, participant1LeftNotified: false, participant2LeftNotified: false },
+      { merge: true },
+    );
     // Add system message for join
     await addDoc(collection(db, `sessions/${newSessionId}/messages`), {
       sender: 'system',
@@ -110,6 +153,7 @@ export default function Chat() {
           lastSeen: new Date(),
           heartbeat: Date.now()
         }, { merge: true });
+        await setDoc(doc(db, 'sessions', sessionId), { participant1LeftNotified: false }, { merge: true });
         console.log('Participant 1: Set online');
       } catch (error) {
         console.error('Error setting online:', error);
@@ -130,6 +174,7 @@ export default function Chat() {
           content: `Participant 1 has left`,
           timestamp: new Date(),
         });
+        await setDoc(doc(db, 'sessions', sessionId), { participant1LeftNotified: true }, { merge: true });
       } catch (error) {
         console.error('Error setting offline:', error);
       }
@@ -219,6 +264,52 @@ export default function Chat() {
       handleSend();
     }
   };
+
+  useEffect(() => {
+    setShownTopicPrompts(0);
+    setTopicPromptMessage(null);
+  }, [sessionId]);
+
+  useEffect(() => {
+    if (topicPromptMessage) return;
+    let satisfied = 0;
+    let participantCounts = { p1: 0, p2: 0 };
+
+    for (const msg of messages) {
+      if (msg.sender === 'Participant 1') {
+        participantCounts.p1 += 1;
+      } else if (msg.sender === 'Participant 2') {
+        participantCounts.p2 += 1;
+      }
+
+      while (
+        satisfied < TOPIC_PROMPTS.length &&
+        participantCounts.p1 >= TOPIC_PROMPTS[satisfied].threshold &&
+        participantCounts.p2 >= TOPIC_PROMPTS[satisfied].threshold
+      ) {
+        participantCounts.p1 -= TOPIC_PROMPTS[satisfied].threshold;
+        participantCounts.p2 -= TOPIC_PROMPTS[satisfied].threshold;
+        satisfied += 1;
+      }
+    }
+
+    if (
+        satisfied > shownTopicPrompts &&
+        shownTopicPrompts < TOPIC_PROMPTS.length
+    ) {
+      const nextIndex = shownTopicPrompts;
+      setTopicPromptMessage(TOPIC_PROMPTS[nextIndex].message);
+      setShownTopicPrompts(nextIndex + 1);
+    }
+  }, [messages, shownTopicPrompts, topicPromptMessage]);
+
+  useEffect(() => {
+    if (!topicPromptMessage) return;
+    const timeout = setTimeout(() => {
+      setTopicPromptMessage(null);
+    }, 8000);
+    return () => clearTimeout(timeout);
+  }, [topicPromptMessage]);
 
   return (
     <Box minH="100vh" bg="#FCFDFD" display="flex" flexDirection="column" justifyContent="flex-start" alignItems="center">
@@ -321,6 +412,21 @@ export default function Chat() {
           </Flex>
         </Box>
       </Box>
+      {topicPromptMessage && (
+        <Box
+          position="fixed"
+          bottom="90px"
+          left="50%"
+          transform="translateX(-50%)"
+          zIndex={20}
+          w={{ base: '90%', sm: '70%', md: '50%' }}
+        >
+          <Alert status="info" borderRadius="md" boxShadow="lg" alignItems="flex-start">
+            <AlertIcon />
+            <Text>{topicPromptMessage}</Text>
+          </Alert>
+        </Box>
+      )}
     </Box>
   );
 }
