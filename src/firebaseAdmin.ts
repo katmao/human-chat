@@ -1,5 +1,5 @@
-import { cert, getApps, initializeApp } from 'firebase-admin/app';
-import { getAuth } from 'firebase-admin/auth';
+import { App, cert, getApps, initializeApp } from 'firebase-admin/app';
+import { Auth, getAuth } from 'firebase-admin/auth';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -24,13 +24,28 @@ function loadServiceAccount(): ServiceAccount {
   );
 }
 
-const app =
-  getApps().length > 0
-    ? getApps()[0]
-    : initializeApp({
-        credential: cert(loadServiceAccount()),
-      });
+let cachedApp: App | null = null;
+let cachedAuth: Auth | null = null;
 
-const adminAuth = getAuth(app);
+function initFirebaseAdminApp(): App {
+  if (cachedApp) {
+    return cachedApp;
+  }
 
-export { adminAuth };
+  const serviceAccount = loadServiceAccount();
+  cachedApp =
+    getApps().length > 0
+      ? getApps()[0]
+      : initializeApp({
+          credential: cert(serviceAccount),
+        });
+
+  return cachedApp;
+}
+
+export function getAdminAuth(): Auth {
+  if (!cachedAuth) {
+    cachedAuth = getAuth(initFirebaseAdminApp());
+  }
+  return cachedAuth;
+}

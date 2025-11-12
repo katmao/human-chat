@@ -1,4 +1,4 @@
-import { adminAuth } from '../src/firebaseAdmin';
+import { getAdminAuth } from '../src/firebaseAdmin';
 
 async function main() {
   const [, , email, role] = process.argv;
@@ -9,6 +9,7 @@ async function main() {
   }
 
   try {
+    const adminAuth = getAdminAuth();
     const user = await adminAuth.getUserByEmail(email);
     await adminAuth.setCustomUserClaims(user.uid, { role });
     await adminAuth.revokeRefreshTokens(user.uid);

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { adminAuth } from '@/firebaseAdmin';
+import { getAdminAuth } from '@/firebaseAdmin';
 
 const SESSION_COOKIE_NAME = 'firebaseSession';
 const SESSION_MAX_AGE_SECONDS = 60 * 60; // 1 hour
@@ -13,6 +13,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing idToken' }, { status: 400 });
     }
 
+    const adminAuth = getAdminAuth();
     const decodedToken = await adminAuth.verifyIdToken(idToken, true);
 
     const response = NextResponse.json({
