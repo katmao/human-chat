@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState, Suspense } from "react";
+import { useEffect, useRef, useState, Suspense, useCallback } from "react";
 import { Box, Button, Flex, Input, Modal, ModalBody, ModalContent, ModalFooter, ModalOverlay } from "@chakra-ui/react";
 import { db } from "../../src/firebase";
 import { collection, addDoc, query, orderBy, onSnapshot, doc, setDoc, getDoc, onSnapshot as onDocSnapshot } from "firebase/firestore";
@@ -10,6 +10,8 @@ interface Message {
   content: string;
 }
 
+const TYPING_STATUS_TIMEOUT = 2000;
+
 function ConfederateChatContent() {
   const searchParams = useSearchParams();
   const [sessionId, setSessionId] = useState<string>("");
@@ -17,7 +19,10 @@ function ConfederateChatContent() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputCode, setInputCode] = useState<string>("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [joined, setJoined] = useState(false);
+  const [isTyping, setIsTyping] = useState(false);
+  const [participant1Typing, setParticipant1Typing] = useState(false);
 
   // Auto-join if sessionId is in the URL
   useEffect(() => {
@@ -53,7 +58,8 @@ function ConfederateChatContent() {
         await setDoc(presenceRef, { 
           online: true, 
           lastSeen: new Date(),
-          heartbeat: Date.now()
+          heartbeat: Date.now(),
+          typing: false,
         }, { merge: true });
         await setDoc(doc(db, 'sessions', sessionId), { participant2LeftNotified: false }, { merge: true });
         console.log('Participant 2: Set online');
@@ -67,7 +73,8 @@ function ConfederateChatContent() {
         await setDoc(presenceRef, { 
           online: false, 
           lastSeen: new Date(),
-          heartbeat: Date.now()
+          heartbeat: Date.now(),
+          typing: false,
         }, { merge: true });
         console.log('Participant 2: Set offline');
         // Add system message for leave
@@ -134,6 +141,7 @@ function ConfederateChatContent() {
     const sessionRef = doc(db, 'sessions', sessionId);
     const unsubscribe = onDocSnapshot(presenceRef, async (docSnap) => {
       const data = docSnap.data();
+      setParticipant1Typing(Boolean(data?.typing));
       if (data?.online) {
         await setDoc(sessionRef, { participant1LeftNotified: false }, { merge: true });
         return;
@@ -158,6 +166,73 @@ function ConfederateChatContent() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  useEffect(() => {
+    setParticipant1Typing(false);
+    setIsTyping(false);
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = null;
+    }
+  }, [sessionId]);
+
+  const updateTypingStatus = useCallback(
+    async (typing: boolean) => {
+      if (!sessionId || !joined) return;
+      try {
+        await setDoc(
+          doc(db, `sessions/${sessionId}/presence/participant2`),
+          { typing },
+          { merge: true }
+        );
+      } catch (error) {
+        console.error('Error updating typing status:', error);
+      }
+    },
+    [sessionId, joined]
+  );
+
+  const scheduleTypingReset = useCallback(() => {
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+    typingTimeoutRef.current = setTimeout(() => {
+      setIsTyping(false);
+      void updateTypingStatus(false);
+      typingTimeoutRef.current = null;
+    }, TYPING_STATUS_TIMEOUT);
+  }, [updateTypingStatus]);
+
+  const handleTypingSignal = useCallback(() => {
+    if (!sessionId || !joined) return;
+    if (!isTyping) {
+      setIsTyping(true);
+      void updateTypingStatus(true);
+    }
+    scheduleTypingReset();
+  }, [sessionId, joined, isTyping, scheduleTypingReset, updateTypingStatus]);
+
+  const stopTyping = useCallback(() => {
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = null;
+    }
+    if (isTyping) {
+      setIsTyping(false);
+      void updateTypingStatus(false);
+    }
+  }, [isTyping, updateTypingStatus]);
+
+  useEffect(() => {
+    return () => {
+      stopTyping();
+    };
+  }, [stopTyping]);
+
+  const handleInputChange = (value: string) => {
+    setInputCode(value);
+    handleTypingSignal();
+  };
+
   const handleSend = async () => {
     if (!inputCode.trim() || !sessionId) return;
     await addDoc(collection(db, `sessions/${sessionId}/messages`), {
@@ -166,6 +241,7 @@ function ConfederateChatContent() {
       timestamp: new Date(),
     });
     setInputCode("");
+    stopTyping();
   };
 
   const handleKeyPress = (event: React.KeyboardEvent<HTMLInputElement>) => {
@@ -241,6 +317,13 @@ function ConfederateChatContent() {
             </Box>
           )
         ))}
+        {participant1Typing && (
+          <Box display="flex" justifyContent="flex-start" mb={2}>
+            <Box bg="#F3F4F6" color="#666" px={4} py={2} borderRadius="8px" fontSize="sm" fontStyle="italic">
+              Participant 1 is typing...
+            </Box>
+          </Box>
+        )}
         <div ref={messagesEndRef} />
       </Box>
       <Box
@@ -260,7 +343,7 @@ function ConfederateChatContent() {
           <Flex as="form" onSubmit={e => { e.preventDefault(); handleSend(); }}>
             <Input
               value={inputCode}
-              onChange={e => setInputCode(e.target.value)}
+              onChange={e => handleInputChange(e.target.value)}
               onKeyDown={handleKeyPress}
               placeholder="Type your message..."
               bg="#F3F4F6"

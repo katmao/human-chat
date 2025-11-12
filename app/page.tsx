@@ -23,17 +23,19 @@ import {
   ModalOverlay,
   useDisclosure,
 } from '@chakra-ui/react';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { MdAutoAwesome, MdBolt, MdEdit, MdPerson } from 'react-icons/md';
 import Bg from '../public/img/chat/bg-image.png';
 import { db } from '../src/firebase';
-import { collection, addDoc, query, orderBy, onSnapshot, doc, setDoc, updateDoc, getDocs, onSnapshot as onDocSnapshot } from 'firebase/firestore';
+import { collection, addDoc, query, orderBy, onSnapshot, doc, setDoc, getDocs, onSnapshot as onDocSnapshot } from 'firebase/firestore';
 import { v4 as uuidv4 } from 'uuid';
 
 interface Message {
   sender: 'Participant 1' | 'Participant 2' | 'system';
   content: string;
 }
+
+const TYPING_STATUS_TIMEOUT = 2000;
 
 export default function Chat() {
   // Input States
@@ -45,8 +47,11 @@ export default function Chat() {
   const [currentUser, setCurrentUser] = useState<'Participant 1' | 'Participant 2' | null>(null);
   // Reference to the messages container
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { isOpen, onOpen, onClose } = useDisclosure();
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [isTyping, setIsTyping] = useState(false);
+  const [participant2Typing, setParticipant2Typing] = useState(false);
 
   // Scroll to bottom whenever messages change
   const scrollToBottom = () => {
@@ -78,13 +83,26 @@ export default function Chat() {
     return () => unsubscribe();
   }, [sessionId]);
 
+  useEffect(() => {
+    setParticipant2Typing(false);
+    setIsTyping(false);
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = null;
+    }
+  }, [sessionId]);
+
   // When user selects a user, generate a new sessionId and create session doc
   const handleUserSelect = async (user: 'Participant 1' | 'Participant 2') => {
     const newSessionId = uuidv4();
     setCurrentUser(user);
     setSessionId(newSessionId);
     // Set Participant 1 presence to online first
-    await setDoc(doc(db, `sessions/${newSessionId}/presence/participant1`), { online: true });
+    await setDoc(
+      doc(db, `sessions/${newSessionId}/presence/participant1`),
+      { online: true, typing: false },
+      { merge: true }
+    );
     // Then create session doc with archived: false and reset leave flags
     await setDoc(
       doc(db, 'sessions', newSessionId),
@@ -110,7 +128,8 @@ export default function Chat() {
         await setDoc(presenceRef, { 
           online: true, 
           lastSeen: new Date(),
-          heartbeat: Date.now()
+          heartbeat: Date.now(),
+          typing: false,
         }, { merge: true });
         await setDoc(doc(db, 'sessions', sessionId), { participant1LeftNotified: false }, { merge: true });
         console.log('Participant 1: Set online');
@@ -124,7 +143,8 @@ export default function Chat() {
         await setDoc(presenceRef, { 
           online: false, 
           lastSeen: new Date(),
-          heartbeat: Date.now()
+          heartbeat: Date.now(),
+          typing: false,
         }, { merge: true });
         console.log('Participant 1: Set offline');
         // Add system message for leave
@@ -190,6 +210,7 @@ export default function Chat() {
     const presenceRef = doc(db, `sessions/${sessionId}/presence/participant2`);
     const unsubscribe = onDocSnapshot(presenceRef, async (docSnap) => {
       const data = docSnap.data();
+      setParticipant2Typing(Boolean(data?.typing));
       if (data?.online) {
         // Check if join message already exists
         const q = query(collection(db, `sessions/${sessionId}/messages`), orderBy('timestamp'));
@@ -215,6 +236,7 @@ export default function Chat() {
       timestamp: new Date(),
     });
     setInputCode('');
+    stopTyping();
   };
 
   const handleKeyPress = (event: React.KeyboardEvent<HTMLInputElement>) => {
@@ -223,6 +245,64 @@ export default function Chat() {
       handleSend();
     }
   };
+
+  const updateTypingStatus = useCallback(
+    async (typing: boolean) => {
+      if (!sessionId || currentUser !== 'Participant 1') return;
+      try {
+        await setDoc(
+          doc(db, `sessions/${sessionId}/presence/participant1`),
+          { typing },
+          { merge: true }
+        );
+      } catch (error) {
+        console.error('Error updating typing status:', error);
+      }
+    },
+    [sessionId, currentUser]
+  );
+
+  const scheduleTypingReset = useCallback(() => {
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+    typingTimeoutRef.current = setTimeout(() => {
+      setIsTyping(false);
+      void updateTypingStatus(false);
+      typingTimeoutRef.current = null;
+    }, TYPING_STATUS_TIMEOUT);
+  }, [updateTypingStatus]);
+
+  const handleTypingSignal = useCallback(() => {
+    if (!sessionId || currentUser !== 'Participant 1') return;
+    if (!isTyping) {
+      setIsTyping(true);
+      void updateTypingStatus(true);
+    }
+    scheduleTypingReset();
+  }, [sessionId, currentUser, isTyping, scheduleTypingReset, updateTypingStatus]);
+
+  const stopTyping = useCallback(() => {
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = null;
+    }
+    if (isTyping) {
+      setIsTyping(false);
+      void updateTypingStatus(false);
+    }
+  }, [isTyping, updateTypingStatus]);
+
+  const handleInputChange = (value: string) => {
+    setInputCode(value);
+    handleTypingSignal();
+  };
+
+  useEffect(() => {
+    return () => {
+      stopTyping();
+    };
+  }, [stopTyping]);
 
   return (
     <Box minH="100vh" bg="#FCFDFD" display="flex" flexDirection="column" justifyContent="flex-start" alignItems="center">
@@ -276,6 +356,13 @@ export default function Chat() {
             </Box>
           )
         ))}
+        {participant2Typing && (
+          <Box display="flex" justifyContent="flex-start" mb={2}>
+            <Box bg="#F3F4F6" color="#666" px={4} py={2} borderRadius="8px" fontSize="sm" fontStyle="italic">
+              Participant 2 is typing...
+            </Box>
+          </Box>
+        )}
         <div ref={messagesEndRef} />
       </Box>
       <Box
@@ -295,7 +382,7 @@ export default function Chat() {
           <Flex as="form" onSubmit={e => { e.preventDefault(); handleSend(); }}>
             <Input
               value={inputCode}
-              onChange={e => setInputCode(e.target.value)}
+              onChange={e => handleInputChange(e.target.value)}
               onKeyDown={handleKeyPress}
               placeholder={currentUser ? `Type your message...` : ''}
               bg="#F3F4F6"
