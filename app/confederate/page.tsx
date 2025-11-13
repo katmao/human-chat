@@ -11,6 +11,7 @@ interface Message {
 }
 
 const TYPING_STATUS_TIMEOUT = 2000;
+const HEARTBEAT_STALE_THRESHOLD = 45000;
 
 function ConfederateChatContent() {
   const searchParams = useSearchParams();
@@ -23,6 +24,9 @@ function ConfederateChatContent() {
   const [joined, setJoined] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [participant1Typing, setParticipant1Typing] = useState(false);
+  const participant1HeartbeatRef = useRef<number | null>(null);
+  const participant1LeftRef = useRef(false);
+  const participant2OfflineTriggeredRef = useRef(false);
 
   // Auto-join if sessionId is in the URL
   useEffect(() => {
@@ -62,6 +66,7 @@ function ConfederateChatContent() {
           typing: false,
         }, { merge: true });
         await setDoc(doc(db, 'sessions', sessionId), { participant2LeftNotified: false }, { merge: true });
+        participant2OfflineTriggeredRef.current = false;
         console.log('Participant 2: Set online');
       } catch (error) {
         console.error('Error setting online:', error);
@@ -69,6 +74,8 @@ function ConfederateChatContent() {
     };
     
     const setOffline = async () => {
+      if (participant2OfflineTriggeredRef.current) return;
+      participant2OfflineTriggeredRef.current = true;
       try {
         await setDoc(presenceRef, { 
           online: false, 
@@ -86,6 +93,7 @@ function ConfederateChatContent() {
         await setDoc(doc(db, 'sessions', sessionId), { participant2LeftNotified: true }, { merge: true });
       } catch (error) {
         console.error('Error setting offline:', error);
+        participant2OfflineTriggeredRef.current = false;
       }
     };
     
@@ -109,7 +117,12 @@ function ConfederateChatContent() {
     // Handle page unload
     const handleBeforeUnload = () => {
       console.log('Participant 2: Page unloading, setting offline');
-      setOffline();
+      void setOffline();
+    };
+    
+    const handlePageHide = () => {
+      console.log('Participant 2: Page hide detected, setting offline');
+      void setOffline();
     };
     
     // Handle visibility change
@@ -123,44 +136,84 @@ function ConfederateChatContent() {
     };
     
     window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('pagehide', handlePageHide);
     document.addEventListener('visibilitychange', handleVisibilityChange);
     
     return () => {
       console.log('Participant 2: Cleaning up presence');
       clearInterval(heartbeatInterval);
-      setOffline();
+      void setOffline();
       window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('pagehide', handlePageHide);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [sessionId, joined]);
 
-  // Listen for Participant 1 presence and add leave message if needed
+  const notifyParticipant1Left = useCallback(async () => {
+    if (!sessionId || !joined || participant1LeftRef.current) return;
+    const sessionRef = doc(db, 'sessions', sessionId);
+    try {
+      const sessionSnap = await getDoc(sessionRef);
+      if (sessionSnap.data()?.participant1LeftNotified) {
+        participant1LeftRef.current = true;
+        return;
+      }
+      participant1LeftRef.current = true;
+      await addDoc(collection(db, `sessions/${sessionId}/messages`), {
+        sender: 'system',
+        content: 'Participant 1 has left',
+        timestamp: new Date(),
+      });
+      await setDoc(sessionRef, { participant1LeftNotified: true }, { merge: true });
+      await setDoc(
+        doc(db, `sessions/${sessionId}/presence/participant1`),
+        { online: false, lastSeen: new Date(), heartbeat: Date.now(), typing: false },
+        { merge: true }
+      );
+    } catch (error) {
+      console.error('Error notifying that Participant 1 left:', error);
+      participant1LeftRef.current = false;
+    }
+  }, [sessionId, joined]);
+
+  // Listen for Participant 1 presence and infer departure if their heartbeat goes stale
   useEffect(() => {
     if (!sessionId || !joined) return;
+    participant1LeftRef.current = false;
+    participant1HeartbeatRef.current = null;
     const presenceRef = doc(db, `sessions/${sessionId}/presence/participant1`);
     const sessionRef = doc(db, 'sessions', sessionId);
     const unsubscribe = onDocSnapshot(presenceRef, async (docSnap) => {
       const data = docSnap.data();
       setParticipant1Typing(Boolean(data?.typing));
+      if (typeof data?.heartbeat === 'number') {
+        participant1HeartbeatRef.current = data.heartbeat;
+      }
       if (data?.online) {
+        participant1LeftRef.current = false;
         await setDoc(sessionRef, { participant1LeftNotified: false }, { merge: true });
         return;
       }
       if (data && data.online === false) {
-        const sessionSnap = await getDoc(sessionRef);
-        if (sessionSnap.data()?.participant1LeftNotified) {
-          return;
-        }
-        await addDoc(collection(db, `sessions/${sessionId}/messages`), {
-          sender: 'system',
-          content: 'Participant 1 has left',
-          timestamp: new Date(),
-        });
-        await setDoc(sessionRef, { participant1LeftNotified: true }, { merge: true });
+        void notifyParticipant1Left();
       }
     });
-    return () => unsubscribe();
-  }, [sessionId, joined]);
+
+    const staleHeartbeatInterval = setInterval(() => {
+      if (participant1LeftRef.current) return;
+      const lastHeartbeat = participant1HeartbeatRef.current;
+      if (!lastHeartbeat) return;
+      if (Date.now() - lastHeartbeat > HEARTBEAT_STALE_THRESHOLD) {
+        console.log('Participant 1: Heartbeat stale, triggering leave notification');
+        void notifyParticipant1Left();
+      }
+    }, 5000);
+
+    return () => {
+      unsubscribe();
+      clearInterval(staleHeartbeatInterval);
+    };
+  }, [sessionId, joined, notifyParticipant1Left]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });

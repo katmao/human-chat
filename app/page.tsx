@@ -48,6 +48,7 @@ export default function Chat() {
   // Reference to the messages container
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const offlineTriggeredRef = useRef(false);
   const { isOpen, onOpen, onClose } = useDisclosure();
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [isTyping, setIsTyping] = useState(false);
@@ -132,6 +133,7 @@ export default function Chat() {
           typing: false,
         }, { merge: true });
         await setDoc(doc(db, 'sessions', sessionId), { participant1LeftNotified: false }, { merge: true });
+        offlineTriggeredRef.current = false;
         console.log('Participant 1: Set online');
       } catch (error) {
         console.error('Error setting online:', error);
@@ -139,6 +141,8 @@ export default function Chat() {
     };
     
     const setOffline = async () => {
+      if (offlineTriggeredRef.current) return;
+      offlineTriggeredRef.current = true;
       try {
         await setDoc(presenceRef, { 
           online: false, 
@@ -156,6 +160,7 @@ export default function Chat() {
         await setDoc(doc(db, 'sessions', sessionId), { participant1LeftNotified: true }, { merge: true });
       } catch (error) {
         console.error('Error setting offline:', error);
+        offlineTriggeredRef.current = false;
       }
     };
     
@@ -179,7 +184,12 @@ export default function Chat() {
     // Handle page unload
     const handleBeforeUnload = () => {
       console.log('Participant 1: Page unloading, setting offline');
-      setOffline();
+      void setOffline();
+    };
+
+    const handlePageHide = () => {
+      console.log('Participant 1: Page hide detected, setting offline');
+      void setOffline();
     };
     
     // Handle visibility change (tab switch, minimize)
@@ -193,13 +203,15 @@ export default function Chat() {
     };
     
     window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('pagehide', handlePageHide);
     document.addEventListener('visibilitychange', handleVisibilityChange);
     
     return () => {
       console.log('Participant 1: Cleaning up presence');
       clearInterval(heartbeatInterval);
-      setOffline();
+      void setOffline();
       window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('pagehide', handlePageHide);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [sessionId, currentUser]);
