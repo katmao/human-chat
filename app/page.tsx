@@ -36,6 +36,7 @@ interface Message {
 }
 
 const TYPING_STATUS_TIMEOUT = 2000;
+const QUALTRICS_LEAVE_EVENT = 'qualtrics-participant-left';
 
 export default function Chat() {
   // Input States
@@ -202,9 +203,18 @@ export default function Chat() {
       }
     };
     
+    const handleQualtricsLeaveMessage = (event: MessageEvent) => {
+      const payload = event.data;
+      const type = typeof payload === 'string' ? payload : payload?.type;
+      if (type !== QUALTRICS_LEAVE_EVENT) return;
+      console.log('Participant 1: Received leave message from Qualtrics');
+      void setOffline();
+    };
+    
     window.addEventListener('beforeunload', handleBeforeUnload);
     window.addEventListener('pagehide', handlePageHide);
     document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('message', handleQualtricsLeaveMessage);
     
     return () => {
       console.log('Participant 1: Cleaning up presence');
@@ -213,6 +223,7 @@ export default function Chat() {
       window.removeEventListener('beforeunload', handleBeforeUnload);
       window.removeEventListener('pagehide', handlePageHide);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('message', handleQualtricsLeaveMessage);
     };
   }, [sessionId, currentUser]);
 
