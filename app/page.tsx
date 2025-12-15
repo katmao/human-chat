@@ -23,7 +23,7 @@ import {
   ModalOverlay,
   useDisclosure,
 } from '@chakra-ui/react';
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { MdAutoAwesome, MdBolt, MdEdit, MdPerson } from 'react-icons/md';
 import Bg from '../public/img/chat/bg-image.png';
@@ -39,7 +39,7 @@ interface Message {
 const TYPING_STATUS_TIMEOUT = 2000;
 const QUALTRICS_LEAVE_EVENT = 'qualtrics-participant-left';
 
-export default function Chat() {
+function ChatContent() {
   // Input States
   const [inputOnSubmit, setInputOnSubmit] = useState<string>('');
   const [inputCode, setInputCode] = useState<string>('');
@@ -458,5 +458,13 @@ export default function Chat() {
         </Box>
       </Box>
     </Box>
+  );
+}
+
+export default function Chat() {
+  return (
+    <Suspense fallback={null}>
+      <ChatContent />
+    </Suspense>
   );
 }
