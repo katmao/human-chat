@@ -16,6 +16,7 @@ type CliOptions = {
 const DEFAULT_OUTPUT = path.resolve(process.cwd(), 'chat-logs.csv');
 const CSV_HEADERS = [
   'sessionId',
+  'prolificId',
   'archived',
   'messageId',
   'sender',
@@ -39,8 +40,10 @@ function parseArgs(): CliOptions {
   const args = process.argv.slice(2);
   let serviceAccountPath =
     process.env.FIREBASE_SERVICE_ACCOUNT_PATH || path.resolve(process.cwd(), 'serviceAccount.json');
-  let outputPath = process.env.CHAT_EXPORT_PATH || DEFAULT_OUTPUT;
-  let includeActive = process.env.INCLUDE_ACTIVE_SESSIONS === 'true';
+  const envOutputPath = process.env.CHAT_EXPORT_PATH;
+  let outputPath = envOutputPath || DEFAULT_OUTPUT;
+  let outputProvided = Boolean(envOutputPath);
+  let includeActive = process.env.INCLUDE_ACTIVE_SESSIONS !== 'false';
   let startDateInput = process.env.CHAT_EXPORT_START_DATE;
   let endDateInput = process.env.CHAT_EXPORT_END_DATE;
   let timeZone = process.env.CHAT_EXPORT_TIMEZONE || 'UTC';
@@ -57,10 +60,14 @@ function parseArgs(): CliOptions {
       case '--output':
       case '-o':
         outputPath = args[i + 1];
+        outputProvided = true;
         i += 1;
         break;
       case '--include-active':
         includeActive = true;
+        break;
+      case '--archived-only':
+        includeActive = false;
         break;
       case '--timezone':
         timeZone = args[i + 1];
@@ -95,6 +102,13 @@ function parseArgs(): CliOptions {
     const { start, end } = resolveDayRange(dayInput, timeZone);
     startDate = start;
     endDate = end;
+  }
+
+  if (!outputProvided && startDate && endDate) {
+    const formattedStart = formatDateForFilename(startDate);
+    const formattedEnd = formatDateForFilename(endDate);
+    const fileName = `human_chat_logs_${formattedStart}_to_${formattedEnd}.csv`;
+    outputPath = path.resolve(process.cwd(), fileName);
   }
 
   if (startDate && endDate && startDate > endDate) {
@@ -159,6 +173,10 @@ function formatDateValue(value: unknown): string {
 function formatLocalTimestamp(value: number | null, timeZone: string): string {
   if (value === null) return '';
   return formatInTimeZone(value, timeZone, "yyyy-MM-dd'T'HH:mm:ssxxx");
+}
+
+function formatDateForFilename(timestampMs: number): string {
+  return formatInTimeZone(timestampMs, 'UTC', 'yyyy-MM-dd');
 }
 
 function resolveDayRange(day: string, timeZone: string): { start: number; end: number } {
@@ -228,12 +246,15 @@ async function exportSessions(options: CliOptions) {
 
     const participant1 = parsePresence(presence.participant1);
     const participant2 = parsePresence(presence.participant2);
-    const archived = sessionDoc.data().archived ?? false;
+    const sessionData = sessionDoc.data();
+    const archived = sessionData.archived ?? false;
+    const prolificId = sessionData.prolificId ?? '';
 
     if (messagesSnapshot.empty) {
       csvRows.push(
         [
           sessionDoc.id,
+          prolificId,
           archived,
           '',
           '',
@@ -262,6 +283,7 @@ async function exportSessions(options: CliOptions) {
       csvRows.push(
         [
           sessionDoc.id,
+          prolificId,
           archived,
           messageDoc.id,
           data.sender ?? '',

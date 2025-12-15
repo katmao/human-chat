@@ -24,6 +24,7 @@ import {
   useDisclosure,
 } from '@chakra-ui/react';
 import { useEffect, useState, useRef, useCallback } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { MdAutoAwesome, MdBolt, MdEdit, MdPerson } from 'react-icons/md';
 import Bg from '../public/img/chat/bg-image.png';
 import { db } from '../src/firebase';
@@ -54,6 +55,8 @@ export default function Chat() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [isTyping, setIsTyping] = useState(false);
   const [participant2Typing, setParticipant2Typing] = useState(false);
+  const searchParams = useSearchParams();
+  const [prolificId, setProlificId] = useState<string | null>(null);
 
   // Scroll to bottom whenever messages change
   const scrollToBottom = () => {
@@ -94,6 +97,11 @@ export default function Chat() {
     }
   }, [sessionId]);
 
+  useEffect(() => {
+    const prolificParam = searchParams.get('PROLIFIC_PID') || searchParams.get('prolific_pid');
+    setProlificId(prolificParam || null);
+  }, [searchParams]);
+
   // When user selects a user, generate a new sessionId and create session doc
   const handleUserSelect = async (user: 'Participant 1' | 'Participant 2') => {
     const newSessionId = uuidv4();
@@ -105,10 +113,24 @@ export default function Chat() {
       { online: true, typing: false },
       { merge: true }
     );
+
+    const paramProlificId =
+      prolificId?.trim() ||
+      searchParams.get('PROLIFIC_PID')?.trim() ||
+      searchParams.get('prolific_pid')?.trim();
+    const sessionData: Record<string, unknown> = {
+      archived: false,
+      participant1LeftNotified: false,
+      participant2LeftNotified: false,
+    };
+    if (paramProlificId) {
+      sessionData.prolificId = paramProlificId;
+    }
+
     // Then create session doc with archived: false and reset leave flags
     await setDoc(
       doc(db, 'sessions', newSessionId),
-      { archived: false, participant1LeftNotified: false, participant2LeftNotified: false },
+      sessionData,
       { merge: true },
     );
     // Add system message for join
