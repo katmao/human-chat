@@ -9,6 +9,7 @@ import { signOut } from "firebase/auth";
 interface Session {
   id: string;
   archived: boolean;
+  prolificId?: string | null;
   presence: {
     participant1?: { online: boolean };
     participant2?: { online: boolean };
@@ -61,6 +62,7 @@ export default function AdminPage() {
             sessionList.push({
               id: sessionId,
               archived: data.archived,
+              prolificId: typeof data.prolificId === "string" ? data.prolificId : null,
               presence: {
                 participant1: user1Data ? { online: Boolean(user1Online) } : undefined,
                 participant2: user2Data ? { online: Boolean(user2Online) } : undefined,
@@ -140,7 +142,7 @@ export default function AdminPage() {
           <Box key={session.id} p={4} borderWidth={1} borderRadius="md" bg="white">
             <HStack justify="space-between">
               <Box>
-                <Text fontWeight="bold">Session ID: {session.id}</Text>
+                <Text fontWeight="bold">Prolific ID: {session.prolificId || "Not provided"}</Text>
                 <HStack mt={2}>
                   <Badge colorScheme={session.presence.participant1?.online ? "green" : "red"}>Participant 1: {session.presence.participant1?.online ? "Online" : "Offline"}</Badge>
                   <Badge colorScheme={session.presence.participant2?.online ? "green" : "red"}>Participant 2: {session.presence.participant2?.online ? "Online" : "Offline"}</Badge>
